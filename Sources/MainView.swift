@@ -32,7 +32,10 @@ public struct MainView: View {
             .padding(.bottom, 6)
 
             // Mode Selector (Color / Warmth / Scenes)
-            Picker("Mode", selection: $wiz.activeMode) {
+            Picker("Mode", selection: Binding(
+                get: { wiz.activeMode },
+                set: { wiz.selectMode($0) }
+            )) {
                 ForEach(BulbControlMode.allCases) { mode in
                     Text(mode.rawValue).tag(mode)
                 }

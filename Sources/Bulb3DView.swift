@@ -2,6 +2,8 @@ import SwiftUI
 import SceneKit
 import AppKit
 
+/// A19 style smart bulb: glowing dome on a frosted white body, rose gold band,
+/// ridged E27 screw base and a black contact tip.
 public struct Bulb3DView: NSViewRepresentable {
     let isOn: Bool
     let color: NSColor
@@ -19,280 +21,488 @@ public struct Bulb3DView: NSViewRepresentable {
 
     public func makeNSView(context: Context) -> SCNView {
         let scnView = SCNView()
+        scnView.wantsLayer = true
         scnView.backgroundColor = .clear
         scnView.antialiasingMode = .multisampling4X
         scnView.autoenablesDefaultLighting = false
         scnView.allowsCameraControl = false
 
-        let scene = SCNScene()
-        scnView.scene = scene
+        let coordinator = context.coordinator
+        scnView.scene = coordinator.buildScene()
+        scnView.pointOfView = coordinator.cameraNode
 
-        // Root Pivot Node for user rotation & idle rotation
-        let pivotNode = SCNNode()
-        pivotNode.name = "pivotNode"
-        scene.rootNode.addChildNode(pivotNode)
-        context.coordinator.pivotNode = pivotNode
+        let pan = NSPanGestureRecognizer(target: coordinator, action: #selector(Coordinator.handlePan(_:)))
+        scnView.addGestureRecognizer(pan)
 
-        // Construct the 3D Bulb
-        setupBulb(in: pivotNode, coordinator: context.coordinator)
-
-        // Camera setup
-        let cameraNode = SCNNode()
-        cameraNode.camera = SCNCamera()
-        cameraNode.camera?.fieldOfView = 38
-        cameraNode.position = SCNVector3(x: 0, y: 0.15, z: 4.8)
-        scene.rootNode.addChildNode(cameraNode)
-
-        // Environment Lighting for realistic metallic and glass reflections
-        let ambientLight = SCNNode()
-        ambientLight.light = SCNLight()
-        ambientLight.light?.type = .ambient
-        ambientLight.light?.color = NSColor(white: 0.25, alpha: 1.0)
-        scene.rootNode.addChildNode(ambientLight)
-
-        let rimLight = SCNNode()
-        rimLight.light = SCNLight()
-        rimLight.light?.type = .directional
-        rimLight.light?.color = NSColor(white: 0.6, alpha: 1.0)
-        rimLight.position = SCNVector3(x: 3, y: 5, z: 3)
-        rimLight.look(at: SCNVector3(0, 0, 0))
-        scene.rootNode.addChildNode(rimLight)
-
-        // Add Pan Gesture for interactive drag rotation
-        let panGesture = NSPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePan(_:)))
-        scnView.addGestureRecognizer(panGesture)
-
-        // Start idle rotation animation
-        context.coordinator.startIdleAnimation()
-
-        // Initial state update
-        context.coordinator.updateState(isOn: isOn, color: color, brightness: brightness)
-
+        coordinator.startIdleAnimation()
+        coordinator.updateState(isOn: isOn, color: color, brightness: brightness, animated: false)
         return scnView
     }
 
     public func updateNSView(_ nsView: SCNView, context: Context) {
-        context.coordinator.updateState(isOn: isOn, color: color, brightness: brightness)
+        context.coordinator.updateState(isOn: isOn, color: color, brightness: brightness, animated: true)
     }
 
-    private func setupBulb(in root: SCNNode, coordinator: Coordinator) {
-        let bulbAssembly = SCNNode()
-        bulbAssembly.name = "bulbAssembly"
-        root.addChildNode(bulbAssembly)
-
-        // 1. Frosted Glass Dome
-        let glassGeometry = SCNSphere(radius: 0.78)
-        glassGeometry.segmentCount = 64
-        let glassMaterial = SCNMaterial()
-        glassMaterial.lightingModel = .physicallyBased
-        glassMaterial.roughness.contents = 0.25
-        glassMaterial.metalness.contents = 0.05
-        glassMaterial.specular.contents = NSColor.white
-        glassMaterial.fresnelExponent = 1.8
-        glassGeometry.materials = [glassMaterial]
-
-        let glassNode = SCNNode(geometry: glassGeometry)
-        glassNode.position = SCNVector3(0, 0.58, 0)
-        glassNode.scale = SCNVector3(1, 0.92, 1)
-        glassNode.name = "glassNode"
-        bulbAssembly.addChildNode(glassNode)
-        coordinator.glassNode = glassNode
-
-        // 2. Bulb Taper/Neck (connecting globe to base)
-        let neckGeometry = SCNCone(topRadius: 0.68, bottomRadius: 0.34, height: 0.92)
-        neckGeometry.radialSegmentCount = 48
-        let neckMaterial = SCNMaterial()
-        neckMaterial.lightingModel = .physicallyBased
-        neckMaterial.roughness.contents = 0.28
-        neckGeometry.materials = [neckMaterial]
-
-        let neckNode = SCNNode(geometry: neckGeometry)
-        neckNode.position = SCNVector3(0, -0.36, 0)
-        neckNode.name = "neckNode"
-        bulbAssembly.addChildNode(neckNode)
-        coordinator.neckNode = neckNode
-
-        // 3. Inner Glowing Filament / Diode Core
-        let filamentGeometry = SCNTorus(ringRadius: 0.32, pipeRadius: 0.032)
-        filamentGeometry.ringSegmentCount = 48
-        filamentGeometry.pipeSegmentCount = 24
-        let filamentMat = SCNMaterial()
-        filamentMat.lightingModel = .constant
-        filamentGeometry.materials = [filamentMat]
-
-        let filamentNode = SCNNode(geometry: filamentGeometry)
-        filamentNode.position = SCNVector3(0, 0.58, 0)
-        filamentNode.rotation = SCNVector4(1, 0, 0, Float.pi / 2.3)
-        filamentNode.name = "filamentNode"
-        bulbAssembly.addChildNode(filamentNode)
-        coordinator.filamentNode = filamentNode
-
-        // 4. Internal Omni Light
-        let innerLightNode = SCNNode()
-        innerLightNode.light = SCNLight()
-        innerLightNode.light?.type = .omni
-        innerLightNode.position = SCNVector3(0, 0.58, 0)
-        innerLightNode.name = "innerLight"
-        bulbAssembly.addChildNode(innerLightNode)
-        coordinator.innerLightNode = innerLightNode
-
-        // 5. Metallic Screw Base (E27 Collar)
-        let baseHeight: CGFloat = 0.55
-        let baseGeometry = SCNCylinder(radius: 0.36, height: baseHeight)
-        baseGeometry.radialSegmentCount = 48
-        let metalMaterial = SCNMaterial()
-        metalMaterial.lightingModel = .physicallyBased
-        metalMaterial.metalness.contents = 0.92
-        metalMaterial.roughness.contents = 0.22
-        metalMaterial.diffuse.contents = NSColor(white: 0.75, alpha: 1.0)
-        baseGeometry.materials = [metalMaterial]
-
-        let baseNode = SCNNode(geometry: baseGeometry)
-        baseNode.position = SCNVector3(0, -0.98, 0)
-        bulbAssembly.addChildNode(baseNode)
-
-        // 6. Screw Thread Rings
-        for i in 0..<3 {
-            let threadTorus = SCNTorus(ringRadius: 0.37, pipeRadius: 0.025)
-            threadTorus.materials = [metalMaterial]
-            let threadNode = SCNNode(geometry: threadTorus)
-            threadNode.position = SCNVector3(0, -0.82 - (Double(i) * 0.12), 0)
-            bulbAssembly.addChildNode(threadNode)
-        }
-
-        // 7. Ceramic Black Insulator & Contact Tip
-        let insulatorGeometry = SCNCylinder(radius: 0.38, height: 0.1)
-        let blackMaterial = SCNMaterial()
-        blackMaterial.diffuse.contents = NSColor(white: 0.1, alpha: 1.0)
-        blackMaterial.roughness.contents = 0.6
-        insulatorGeometry.materials = [blackMaterial]
-        let insulatorNode = SCNNode(geometry: insulatorGeometry)
-        insulatorNode.position = SCNVector3(0, -1.30, 0)
-        bulbAssembly.addChildNode(insulatorNode)
-
-        let contactGeometry = SCNSphere(radius: 0.18)
-        let copperMaterial = SCNMaterial()
-        copperMaterial.lightingModel = .physicallyBased
-        copperMaterial.metalness.contents = 0.85
-        copperMaterial.diffuse.contents = NSColor(red: 0.78, green: 0.52, blue: 0.35, alpha: 1.0)
-        contactGeometry.materials = [copperMaterial]
-        let contactNode = SCNNode(geometry: contactGeometry)
-        contactNode.position = SCNVector3(0, -1.38, 0)
-        contactNode.scale = SCNVector3(1, 0.4, 1)
-        bulbAssembly.addChildNode(contactNode)
-    }
+    // MARK: - Coordinator
 
     public class Coordinator: NSObject {
-        var pivotNode: SCNNode?
-        var glassNode: SCNNode?
-        var neckNode: SCNNode?
-        var filamentNode: SCNNode?
-        var innerLightNode: SCNNode?
+        let cameraNode = SCNNode()
 
-        private var currentAngleX: Float = 0.0
-        private var currentAngleY: Float = 0.0
-        private var isUserInteracting: Bool = false
+        private let floatNode = SCNNode()
+        private let pivotNode = SCNNode()
+        private let idleNode = SCNNode()
+        private let haloNode = SCNNode()
+        private let animNode = SCNNode()
+
+        private let domeMaterial = SCNMaterial()
+        private let bodyMaterial = SCNMaterial()
+        private let haloMaterial = SCNMaterial()
+        private let innerLight = SCNLight()
+
+        private var angleX: Float = 0
+        private var angleY: Float = 0
+        private var interactionToken = 0
+
+        // Animated visual state
+        private let offDomeColor = SIMD3<Float>(0.80, 0.82, 0.86)
+        private var domeColor = SIMD3<Float>(0.80, 0.82, 0.86)
+        private var glow: Float = 0
+        private var tint = SIMD3<Float>(1.0, 0.85, 0.6)
+
+        // MARK: Scene
+
+        func buildScene() -> SCNScene {
+            let scene = SCNScene()
+            scene.lightingEnvironment.contents = Coordinator.makeEnvironment()
+            scene.lightingEnvironment.intensity = 1.1
+
+            // Soft halo behind the bulb
+            let haloPlane = SCNPlane(width: 6.5, height: 6.5)
+            haloMaterial.lightingModel = .constant
+            haloMaterial.diffuse.contents = Coordinator.makeHaloImage()
+            haloMaterial.blendMode = .alpha
+            haloMaterial.writesToDepthBuffer = false
+            haloMaterial.isDoubleSided = true
+            haloPlane.materials = [haloMaterial]
+            haloNode.geometry = haloPlane
+            haloNode.position = SCNVector3(0, -0.1, -1.3)
+            haloNode.renderingOrder = -10
+            haloNode.opacity = 0
+            scene.rootNode.addChildNode(haloNode)
+
+            scene.rootNode.addChildNode(animNode)
+
+            // Node hierarchy: float -> pivot (user drag) -> idle (sway) -> bulb
+            scene.rootNode.addChildNode(floatNode)
+            floatNode.addChildNode(pivotNode)
+            pivotNode.addChildNode(idleNode)
+            buildBulb(in: idleNode)
+
+            // Camera
+            let camera = SCNCamera()
+            camera.fieldOfView = 28
+            camera.zNear = 0.1
+            camera.zFar = 50
+            cameraNode.camera = camera
+            cameraNode.position = SCNVector3(0, -0.2, 7.2)
+            scene.rootNode.addChildNode(cameraNode)
+
+            // Lights
+            let ambient = SCNNode()
+            ambient.light = SCNLight()
+            ambient.light?.type = .ambient
+            ambient.light?.color = NSColor(white: 1.0, alpha: 1.0)
+            ambient.light?.intensity = 200
+            scene.rootNode.addChildNode(ambient)
+
+            let key = SCNNode()
+            key.light = SCNLight()
+            key.light?.type = .directional
+            key.light?.color = NSColor(white: 1.0, alpha: 1.0)
+            key.light?.intensity = 800
+            key.eulerAngles = SCNVector3(-0.6, 0.6, 0)
+            scene.rootNode.addChildNode(key)
+
+            let fill = SCNNode()
+            fill.light = SCNLight()
+            fill.light?.type = .directional
+            fill.light?.color = NSColor(white: 0.8, alpha: 1.0)
+            fill.light?.intensity = 350
+            fill.eulerAngles = SCNVector3(-0.2, -0.9, 0)
+            scene.rootNode.addChildNode(fill)
+
+            apply()
+            return scene
+        }
+
+        private func buildBulb(in root: SCNNode) {
+            let domeCenterY: CGFloat = 0.55
+            let domeRadius: CGFloat = 0.80
+            let seamY: CGFloat = 0.20
+
+            // 1. Glowing dome (spherical cap, profile listed top to bottom)
+            let phiMax = acos((seamY - domeCenterY) / domeRadius)
+            let domeSteps = 48
+            var domeProfile: [CGPoint] = []
+            for i in 0...domeSteps {
+                let phi = phiMax * CGFloat(i) / CGFloat(domeSteps)
+                domeProfile.append(CGPoint(x: domeRadius * sin(phi),
+                                           y: domeCenterY + domeRadius * cos(phi)))
+            }
+            domeMaterial.lightingModel = .constant
+            domeMaterial.shaderModifiers = [.fragment: Coordinator.domeShader]
+            domeMaterial.setValue(NSValue(scnVector3: SCNVector3(0.8, 0.82, 0.86)), forKey: "glowColor")
+            domeMaterial.setValue(NSNumber(value: Float(0)), forKey: "glowAmount")
+            let domeGeo = Coordinator.lathe(domeProfile)
+            domeGeo.materials = [domeMaterial]
+            let domeNode = SCNNode(geometry: domeGeo)
+            domeNode.name = "dome"
+            root.addChildNode(domeNode)
+
+            // 2. Frosted white body with a smooth taper into the base
+            let bodyControl: [CGPoint] = [
+                CGPoint(x: 0.719, y: 0.20),
+                CGPoint(x: 0.736, y: 0.02),
+                CGPoint(x: 0.715, y: -0.22),
+                CGPoint(x: 0.640, y: -0.48),
+                CGPoint(x: 0.530, y: -0.72),
+                CGPoint(x: 0.450, y: -0.90),
+                CGPoint(x: 0.415, y: -1.04)
+            ]
+            let bodyProfile = Coordinator.spline(bodyControl, steps: 14)
+            bodyMaterial.lightingModel = .physicallyBased
+            bodyMaterial.diffuse.contents = NSColor(white: 0.97, alpha: 1.0)
+            bodyMaterial.roughness.contents = 0.55
+            bodyMaterial.metalness.contents = 0.0
+            let bodyGeo = Coordinator.lathe(bodyProfile)
+            bodyGeo.materials = [bodyMaterial]
+            root.addChildNode(SCNNode(geometry: bodyGeo))
+
+            // 3. Rose gold band that follows the body curve
+            var bandProfile: [CGPoint] = []
+            let bandTop: CGFloat = -0.50
+            let bandBottom: CGFloat = -0.67
+            let bandSteps = 18
+            for k in 0...bandSteps {
+                let u = CGFloat(k) / CGFloat(bandSteps)
+                let y = bandTop - (bandTop - bandBottom) * u
+                let r = Coordinator.radius(at: y, in: bodyProfile) + 0.003 + 0.008 * sqrt(sin(.pi * u))
+                bandProfile.append(CGPoint(x: r, y: y))
+            }
+            let roseGold = SCNMaterial()
+            roseGold.lightingModel = .physicallyBased
+            roseGold.diffuse.contents = NSColor(red: 0.86, green: 0.58, blue: 0.50, alpha: 1.0)
+            roseGold.metalness.contents = 1.0
+            roseGold.roughness.contents = 0.30
+            let bandGeo = Coordinator.lathe(bandProfile)
+            bandGeo.materials = [roseGold]
+            root.addChildNode(SCNNode(geometry: bandGeo))
+
+            // 4. Ridged E27 screw base
+            var baseProfile: [CGPoint] = [
+                CGPoint(x: 0.410, y: -1.04),
+                CGPoint(x: 0.405, y: -1.07),
+                CGPoint(x: 0.375, y: -1.09)
+            ]
+            let threadStart: CGFloat = -1.10
+            let threadEnd: CGFloat = -1.56
+            let ridges: CGFloat = 5
+            let threadSteps = 100
+            let sharp: CGFloat = 1.8
+            for i in 0...threadSteps {
+                let u = CGFloat(i) / CGFloat(threadSteps)
+                let y = threadStart + (threadEnd - threadStart) * u
+                let center = 0.355 - 0.045 * u
+                let wave = tanh(sharp * cos(2 * .pi * ridges * u)) / tanh(sharp)
+                baseProfile.append(CGPoint(x: center + 0.022 * wave, y: y))
+            }
+            baseProfile.append(CGPoint(x: 0.300, y: -1.60))
+            baseProfile.append(CGPoint(x: 0.270, y: -1.62))
+
+            let metal = SCNMaterial()
+            metal.lightingModel = .physicallyBased
+            metal.diffuse.contents = NSColor(white: 0.82, alpha: 1.0)
+            metal.metalness.contents = 1.0
+            metal.roughness.contents = 0.28
+            let baseGeo = Coordinator.lathe(baseProfile)
+            baseGeo.materials = [metal]
+            root.addChildNode(SCNNode(geometry: baseGeo))
+
+            // 5. Black insulator and contact tip
+            let tipProfile: [CGPoint] = [
+                CGPoint(x: 0.270, y: -1.62),
+                CGPoint(x: 0.240, y: -1.66),
+                CGPoint(x: 0.170, y: -1.74),
+                CGPoint(x: 0.150, y: -1.78),
+                CGPoint(x: 0.0, y: -1.78)
+            ]
+            let black = SCNMaterial()
+            black.lightingModel = .physicallyBased
+            black.diffuse.contents = NSColor(white: 0.06, alpha: 1.0)
+            black.metalness.contents = 0.0
+            black.roughness.contents = 0.45
+            let tipGeo = Coordinator.lathe(tipProfile)
+            tipGeo.materials = [black]
+            root.addChildNode(SCNNode(geometry: tipGeo))
+
+            // 6. Inner light that tints the surroundings
+            innerLight.type = .omni
+            innerLight.attenuationStartDistance = 0
+            innerLight.attenuationEndDistance = 4
+            innerLight.intensity = 0
+            let lightNode = SCNNode()
+            lightNode.light = innerLight
+            lightNode.position = SCNVector3(0, 0.55, 0)
+            root.addChildNode(lightNode)
+        }
+
+        // MARK: Animation and interaction
 
         func startIdleAnimation() {
-            guard let pivot = pivotNode else { return }
-            let rotate = SCNAction.rotateBy(x: 0, y: CGFloat.pi * 2, z: 0, duration: 18)
-            let floatUp = SCNAction.moveBy(x: 0, y: 0.06, z: 0, duration: 2.2)
-            floatUp.timingMode = .easeInEaseOut
-            let floatDown = floatUp.reversed()
+            let up = SCNAction.moveBy(x: 0, y: 0.05, z: 0, duration: 2.4)
+            up.timingMode = .easeInEaseOut
+            floatNode.runAction(.repeatForever(.sequence([up, up.reversed()])), forKey: "float")
 
-            let floatSequence = SCNAction.repeatForever(SCNAction.sequence([floatUp, floatDown]))
-            let rotateForever = SCNAction.repeatForever(rotate)
-
-            pivot.runAction(rotateForever, forKey: "idleRotation")
-            pivot.runAction(floatSequence, forKey: "idleFloat")
+            let swayA = SCNAction.rotateTo(x: 0.05, y: 0, z: 0.04, duration: 3.2)
+            swayA.timingMode = .easeInEaseOut
+            let swayB = SCNAction.rotateTo(x: -0.05, y: 0, z: -0.04, duration: 3.2)
+            swayB.timingMode = .easeInEaseOut
+            idleNode.runAction(.repeatForever(.sequence([swayA, swayB])), forKey: "sway")
         }
 
         @objc func handlePan(_ gesture: NSPanGestureRecognizer) {
-            guard let pivot = pivotNode else { return }
             let translation = gesture.translation(in: gesture.view)
 
             switch gesture.state {
             case .began:
-                isUserInteracting = true
-                pivot.removeAction(forKey: "idleRotation")
+                interactionToken += 1
+                idleNode.isPaused = true
+                pivotNode.removeAction(forKey: "recenter")
+                angleX = Float(pivotNode.eulerAngles.x)
+                angleY = Float(pivotNode.eulerAngles.y)
             case .changed:
                 let sensitivity: Float = 0.012
-                currentAngleY += Float(translation.x) * sensitivity
-                currentAngleX += Float(-translation.y) * sensitivity
-                // Clamp X angle to prevent flipping
-                currentAngleX = max(-0.8, min(0.8, currentAngleX))
-
-                pivot.eulerAngles = SCNVector3(currentAngleX, currentAngleY, 0)
+                angleY += Float(translation.x) * sensitivity
+                angleX += Float(-translation.y) * sensitivity
+                angleX = max(-0.8, min(0.8, angleX))
+                pivotNode.eulerAngles = SCNVector3(CGFloat(angleX), CGFloat(angleY), 0)
                 gesture.setTranslation(.zero, in: gesture.view)
             case .ended, .cancelled:
-                isUserInteracting = false
-                // Resume gentle idle rotation after 2.5s
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
-                    guard let self = self, !self.isUserInteracting else { return }
-                    self.startIdleAnimation()
+                interactionToken += 1
+                let token = interactionToken
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                    guard let self = self, token == self.interactionToken else { return }
+                    let back = SCNAction.rotateTo(x: 0, y: 0, z: 0, duration: 0.9, usesShortestUnitArc: true)
+                    back.timingMode = .easeInEaseOut
+                    self.pivotNode.runAction(back, forKey: "recenter")
+                    self.idleNode.isPaused = false
                 }
             default:
                 break
             }
         }
 
-        func updateState(isOn: Bool, color: NSColor, brightness: Double) {
-            SCNTransaction.begin()
-            SCNTransaction.animationDuration = 0.35
+        // MARK: State
 
-            let targetColor = color
-            let dimmingFactor = CGFloat(max(0.1, brightness / 100.0))
+        func updateState(isOn: Bool, color: NSColor, brightness: Double, animated: Bool) {
+            let rgb = Coordinator.rgb(color)
+            let level = Float(min(max(brightness, 0), 100) / 100)
+            let dim = 0.30 + 0.70 * level
 
-            guard let glassMat = glassNode?.geometry?.materials.first,
-                  let neckMat = neckNode?.geometry?.materials.first,
-                  let filamentMat = filamentNode?.geometry?.materials.first,
-                  let innerLight = innerLightNode?.light else {
-                SCNTransaction.commit()
+            let targetDome = isOn ? rgb * dim : offDomeColor
+            let targetGlow: Float = isOn ? dim : 0
+            let targetTint = isOn ? rgb : tint
+
+            animNode.removeAction(forKey: "state")
+
+            if !animated {
+                domeColor = targetDome
+                glow = targetGlow
+                tint = targetTint
+                apply()
                 return
             }
 
-            if isOn {
-                // Glass glow
-                glassMat.diffuse.contents = targetColor.withAlphaComponent(0.85)
-                glassMat.emission.contents = targetColor
-                glassMat.emission.intensity = 1.4 * dimmingFactor
-                glassMat.transparency = 0.88
+            let fromDome = domeColor
+            let fromGlow = glow
+            let fromTint = tint
+            let duration: CGFloat = 0.35
 
-                // Neck subtle glow
-                neckMat.diffuse.contents = targetColor.withAlphaComponent(0.7)
-                neckMat.emission.contents = targetColor
-                neckMat.emission.intensity = 0.7 * dimmingFactor
-                neckMat.transparency = 0.92
+            let action = SCNAction.customAction(duration: TimeInterval(duration)) { [weak self] _, elapsed in
+                guard let self = self else { return }
+                let t = Float(min(elapsed / duration, 1))
+                let e = t * t * (3 - 2 * t)
+                self.domeColor = fromDome + (targetDome - fromDome) * e
+                self.glow = fromGlow + (targetGlow - fromGlow) * e
+                self.tint = fromTint + (targetTint - fromTint) * e
+                self.apply()
+            }
+            animNode.runAction(action, forKey: "state")
+        }
 
-                // Filament brilliant glow
-                filamentMat.emission.contents = targetColor
-                filamentMat.emission.intensity = 3.5 * dimmingFactor
-                filamentMat.diffuse.contents = NSColor.white
+        private func apply() {
+            domeMaterial.setValue(
+                NSValue(scnVector3: SCNVector3(CGFloat(domeColor.x), CGFloat(domeColor.y), CGFloat(domeColor.z))),
+                forKey: "glowColor")
+            domeMaterial.setValue(NSNumber(value: glow), forKey: "glowAmount")
 
-                // Omni light emission
-                innerLight.color = targetColor
-                innerLight.intensity = 850.0 * Double(dimmingFactor)
-            } else {
-                // Off state: sleek cool frosted translucent glass
-                let offGlassColor = NSColor(white: 0.28, alpha: 0.45)
-                glassMat.diffuse.contents = offGlassColor
-                glassMat.emission.contents = NSColor.black
-                glassMat.emission.intensity = 0.0
-                glassMat.transparency = 0.55
+            let tintColor = NSColor(srgbRed: CGFloat(tint.x), green: CGFloat(tint.y), blue: CGFloat(tint.z), alpha: 1.0)
+            bodyMaterial.emission.contents = tintColor
+            bodyMaterial.emission.intensity = CGFloat(0.12 * glow)
 
-                neckMat.diffuse.contents = offGlassColor
-                neckMat.emission.contents = NSColor.black
-                neckMat.emission.intensity = 0.0
-                neckMat.transparency = 0.65
+            innerLight.color = tintColor
+            innerLight.intensity = CGFloat(500 * glow)
 
-                filamentMat.diffuse.contents = NSColor(white: 0.3, alpha: 1.0)
-                filamentMat.emission.contents = NSColor.black
-                filamentMat.emission.intensity = 0.0
+            haloMaterial.multiply.contents = tintColor
+            haloNode.opacity = CGFloat(glow * 0.75)
+        }
 
-                innerLight.intensity = 0.0
+        // MARK: Helpers
+
+        /// Fragment shader for the dome: bright core, soft rim and a glossy highlight.
+        private static let domeShader = """
+        #pragma arguments
+        float3 glowColor;
+        float glowAmount;
+        #pragma body
+        float3 n = normalize(_surface.normal);
+        float3 v = normalize(_surface.view);
+        float ndv = saturate(dot(n, v));
+        float3 lit = glowColor * (0.62 + 0.55 * pow(ndv, 1.2));
+        lit = mix(lit, float3(1.0), pow(ndv, 5.0) * 0.28 * glowAmount);
+        lit += glowColor * pow(1.0 - ndv, 3.0) * 0.18;
+        float hl1 = smoothstep(0.70, 0.95, dot(n, normalize(float3(-0.55, 0.65, 0.55))));
+        float hl2 = smoothstep(0.80, 0.98, dot(n, normalize(float3(0.60, 0.30, 0.70))));
+        lit += float3(hl1 * 0.35 + hl2 * 0.10);
+        _output.color = float4(lit, 1.0);
+        """
+
+        static func rgb(_ color: NSColor) -> SIMD3<Float> {
+            let c = color.usingColorSpace(.sRGB) ?? color.usingColorSpace(.deviceRGB) ?? NSColor.white
+            return SIMD3<Float>(Float(c.redComponent), Float(c.greenComponent), Float(c.blueComponent))
+        }
+
+        /// Revolves a profile (x = radius, y = height, listed top to bottom) around the Y axis.
+        static func lathe(_ profile: [CGPoint], segments: Int = 96) -> SCNGeometry {
+            var vertices: [SCNVector3] = []
+            var normals: [SCNVector3] = []
+            var uvs: [CGPoint] = []
+            var indices: [Int32] = []
+
+            let count = profile.count
+            for i in 0..<count {
+                let prev = profile[max(i - 1, 0)]
+                let next = profile[min(i + 1, count - 1)]
+                let dr = next.x - prev.x
+                let dy = next.y - prev.y
+                var nr = -dy
+                var ny = dr
+                let len = hypot(nr, ny)
+                if len > 0 { nr /= len; ny /= len }
+
+                for s in 0...segments {
+                    let a = 2 * CGFloat.pi * CGFloat(s) / CGFloat(segments)
+                    let c = cos(a)
+                    let sn = sin(a)
+                    vertices.append(SCNVector3(profile[i].x * c, profile[i].y, profile[i].x * sn))
+                    normals.append(SCNVector3(nr * c, ny, nr * sn))
+                    uvs.append(CGPoint(x: CGFloat(s) / CGFloat(segments),
+                                       y: CGFloat(i) / CGFloat(max(count - 1, 1))))
+                }
             }
 
-            SCNTransaction.commit()
+            let stride = segments + 1
+            for i in 0..<(count - 1) {
+                for s in 0..<segments {
+                    let a = Int32(i * stride + s)
+                    let b = Int32((i + 1) * stride + s)
+                    let c = Int32(i * stride + s + 1)
+                    let d = Int32((i + 1) * stride + s + 1)
+                    indices.append(contentsOf: [a, c, b, b, c, d])
+                }
+            }
+
+            let geometry = SCNGeometry(
+                sources: [
+                    SCNGeometrySource(vertices: vertices),
+                    SCNGeometrySource(normals: normals),
+                    SCNGeometrySource(textureCoordinates: uvs)
+                ],
+                elements: [SCNGeometryElement(indices: indices, primitiveType: .triangles)]
+            )
+            return geometry
+        }
+
+        private static func cr(_ p0: CGFloat, _ p1: CGFloat, _ p2: CGFloat, _ p3: CGFloat, _ t: CGFloat) -> CGFloat {
+            let t2 = t * t
+            let t3 = t2 * t
+            let a = 2 * p1
+            let b = (-p0 + p2) * t
+            let c = (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2
+            let d = (-p0 + 3 * p1 - 3 * p2 + p3) * t3
+            return 0.5 * (a + b + c + d)
+        }
+
+        /// Catmull-Rom spline through the control points.
+        static func spline(_ pts: [CGPoint], steps: Int) -> [CGPoint] {
+            guard pts.count > 1 else { return pts }
+            var out: [CGPoint] = []
+            for i in 0..<(pts.count - 1) {
+                let p0 = pts[max(i - 1, 0)]
+                let p1 = pts[i]
+                let p2 = pts[i + 1]
+                let p3 = pts[min(i + 2, pts.count - 1)]
+                for s in 0..<steps {
+                    let t = CGFloat(s) / CGFloat(steps)
+                    out.append(CGPoint(x: cr(p0.x, p1.x, p2.x, p3.x, t),
+                                       y: cr(p0.y, p1.y, p2.y, p3.y, t)))
+                }
+            }
+            out.append(pts[pts.count - 1])
+            return out
+        }
+
+        static func radius(at y: CGFloat, in pts: [CGPoint]) -> CGFloat {
+            for i in 0..<(pts.count - 1) {
+                let a = pts[i]
+                let b = pts[i + 1]
+                if a.y >= y && y >= b.y {
+                    let span = a.y - b.y
+                    let t = span == 0 ? 0 : (a.y - y) / span
+                    return a.x + (b.x - a.x) * t
+                }
+            }
+            return pts.last?.x ?? 0
+        }
+
+        /// Simple studio style environment so the metal and plastic have something to reflect.
+        static func makeEnvironment() -> NSImage {
+            let size = NSSize(width: 1024, height: 512)
+            return NSImage(size: size, flipped: false) { rect in
+                let gradient = NSGradient(
+                    colors: [NSColor(white: 0.10, alpha: 1), NSColor(white: 0.32, alpha: 1), NSColor(white: 0.62, alpha: 1)],
+                    atLocations: [0, 0.5, 1],
+                    colorSpace: .genericGray)
+                gradient?.draw(in: rect, angle: 90)
+                NSColor.white.setFill()
+                NSBezierPath(rect: NSRect(x: 100, y: 180, width: 140, height: 220)).fill()
+                NSBezierPath(rect: NSRect(x: 700, y: 200, width: 160, height: 190)).fill()
+                NSBezierPath(rect: NSRect(x: 300, y: 450, width: 400, height: 50)).fill()
+                return true
+            }
+        }
+
+        static func makeHaloImage() -> NSImage {
+            let size = NSSize(width: 256, height: 256)
+            return NSImage(size: size, flipped: false) { rect in
+                let white = NSColor.white
+                let gradient = NSGradient(
+                    colors: [white.withAlphaComponent(0.9), white.withAlphaComponent(0.35), white.withAlphaComponent(0.0)],
+                    atLocations: [0, 0.45, 1],
+                    colorSpace: .sRGB)
+                gradient?.draw(in: rect, relativeCenterPosition: NSPoint(x: 0, y: 0))
+                return true
+            }
         }
     }
 }

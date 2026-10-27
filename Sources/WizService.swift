@@ -52,6 +52,8 @@ public final class WizService: ObservableObject {
     private let networkQueue = DispatchQueue(label: "com.lumina.network", qos: .userInitiated)
     private var debounceWorkItem: DispatchWorkItem?
     private var pollTimer: Timer?
+    private var controlRevision: UInt64 = 0
+    private var lastLocalControlAt = Date.distantPast
     private let udpPort: UInt16 = 38899
 
     private init() {
@@ -131,6 +133,7 @@ public final class WizService: ObservableObject {
     }
 
     public func setBrightness(_ value: Double) {
+        noteLocalControl()
         let clamped = max(10.0, min(100.0, value))
         self.brightness = clamped
         debouncePilotCommand {
@@ -139,6 +142,7 @@ public final class WizService: ObservableObject {
     }
 
     public func setColor(_ newColor: NSColor) {
+        noteLocalControl()
         self.color = newColor
         self.activeMode = .color
 
@@ -159,6 +163,7 @@ public final class WizService: ObservableObject {
     }
 
     public func setTemperature(_ kelvin: Double) {
+        noteLocalControl()
         let clamped = max(2200.0, min(6500.0, kelvin))
         self.temperature = clamped
         self.activeMode = .temperature
@@ -176,6 +181,7 @@ public final class WizService: ObservableObject {
     }
 
     public func setScene(_ scene: WizScene) {
+        noteLocalControl()
         self.activeSceneId = scene.id
         self.activeMode = .scenes
 
@@ -186,6 +192,16 @@ public final class WizService: ObservableObject {
                 "dimming": Int(self.brightness)
             ]
         }
+    }
+
+    public func selectMode(_ mode: BulbControlMode) {
+        noteLocalControl()
+        activeMode = mode
+    }
+
+    private func noteLocalControl() {
+        controlRevision &+= 1
+        lastLocalControlAt = Date()
     }
 
     // MARK: - Pilot Command Execution
@@ -235,12 +251,17 @@ public final class WizService: ObservableObject {
 
     public func refreshStatus() {
         let currentIP = self.ipAddress
+        let revisionAtRequest = controlRevision
         networkQueue.async { [weak self] in
             guard let self = self else { return }
             let req: [String: Any] = ["method": "getPilot", "params": [:]]
             let resp = self.sendUDP(payload: req, host: currentIP, timeout: 0.8)
 
             DispatchQueue.main.async {
+                // A response that was already in flight when the user changed a control
+                // must not roll the interface back to the older bulb state.
+                let mayApplyControls = revisionAtRequest == self.controlRevision
+                    && Date().timeIntervalSince(self.lastLocalControlAt) > 2.0
                 guard let resp = resp else {
                     self.isConnected = false
                     return
@@ -249,7 +270,7 @@ public final class WizService: ObservableObject {
                 self.isConnected = true
                 self.lastErrorMessage = nil
 
-                if let result = resp["result"] as? [String: Any] {
+                if mayApplyControls, let result = resp["result"] as? [String: Any] {
                     if let state = result["state"] as? Bool {
                         self.isOn = state
                     }
@@ -259,17 +280,14 @@ public final class WizService: ObservableObject {
                     if let temp = result["temp"] as? Int {
                         self.temperature = Double(temp)
                         if (result["sceneId"] as? Int ?? 0) == 0 && result["r"] == nil {
-                            self.activeMode = .temperature
                             self.color = self.kelvinToColor(Double(temp))
                         }
                     }
                     if let r = result["r"] as? Int, let g = result["g"] as? Int, let b = result["b"] as? Int {
                         self.color = NSColor(srgbRed: CGFloat(r)/255.0, green: CGFloat(g)/255.0, blue: CGFloat(b)/255.0, alpha: 1.0)
-                        self.activeMode = .color
                     }
                     if let sceneId = result["sceneId"] as? Int, sceneId > 0 {
                         self.activeSceneId = sceneId
-                        self.activeMode = .scenes
                     }
                 }
             }
