@@ -245,19 +245,3 @@ public struct ColorWheelView: View {
         )
     }
 }
-
-private extension NSColor {
-    convenience init?(hex: String) {
-        var value = hex.trimmingCharacters(in: .whitespacesAndNewlines)
-        if value.hasPrefix("#") { value.removeFirst() }
-        guard value.count == 6, let rgb = UInt32(value, radix: 16) else { return nil }
-        self.init(srgbRed: CGFloat((rgb >> 16) & 0xff) / 255.0,
-                  green: CGFloat((rgb >> 8) & 0xff) / 255.0,
-                  blue: CGFloat(rgb & 0xff) / 255.0, alpha: 1.0)
-    }
-
-    var hexString: String {
-        guard let rgb = usingColorSpace(.deviceRGB) else { return "#FFFFFF" }
-        return String(format: "#%02X%02X%02X", Int(rgb.redComponent * 255), Int(rgb.greenComponent * 255), Int(rgb.blueComponent * 255))
-    }
-}

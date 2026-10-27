@@ -15,6 +15,9 @@ A small, native macOS menu bar controller for WiZ smart bulbs. Lumina talks dire
 - Use the bulb preview to see color and brightness changes. Its label can be customized in **Settings**.
 - Choose built-in WiZ scenes or start a cycling color flow, including Diwali, Aurora, Sunset, and Ocean palettes.
 - Set the bulb's IP address in Settings or use **Rescan IP** to look for it on your local network.
+- Scheduled alarms and wake-up routines with firmware pulse effects or custom color strobe loops.
+- Rock-solid `.applicationDefined` popover behavior with outside-click and Escape key monitors.
+- Cached menu bar rendering to minimize CPU overhead.
 
 ## Requirements
 
@@ -24,16 +27,29 @@ A small, native macOS menu bar controller for WiZ smart bulbs. Lumina talks dire
 
 Full Xcode is not required to build the app when the Command Line Tools and macOS SDK are installed.
 
-## Build and run
+## Build and Run
 
 ```sh
+# Build production app bundle
 ./build.sh
-open Lumina.app
+
+# Run unit tests
+./build.sh --test
+
+# Run headless verification
+./build.sh --selftest
+
+# Build isolated developer variant side-by-side with production
+./build.sh --dev
+
+# Install to /Applications
+./build.sh --install
+
+# Package a compressed distributable DMG
+./Tools/make-dmg.sh
 ```
 
-The build script creates and ad-hoc signs `Lumina.app` in the project folder for local use.
-
-## Connect to a bulb
+## Connect to a Bulb
 
 1. Connect the Mac and bulb to the same local network. Guest Wi-Fi and client isolation can block communication between devices.
 2. Open Lumina from the menu bar and choose the gear icon.
@@ -42,14 +58,17 @@ The build script creates and ad-hoc signs `Lumina.app` in the project folder for
 
 Lumina sends unsigned local UDP commands to port `38899`. Bulbs configured to require verified controls are not supported by this version. If a command is rejected, check the WiZ security setting and the IP address shown in Lumina.
 
-## Project files
+## Project Architecture
 
-- `Sources/` — SwiftUI interface, SceneKit bulb preview, and local UDP controller
-- `Info.plist` — app bundle metadata
-- `Package.swift` — Swift package manifest
-- `build.sh` — standalone app bundle build script
-- `public/SS1.png`, `public/SS2.png` — screenshots used above
+- `Sources/`
+  - `App/` — [`AppDelegate.swift`](Sources/App/AppDelegate.swift), [`StatusItemController.swift`](Sources/App/StatusItemController.swift)
+  - `Core/` — [`Defaults.swift`](Sources/Core/Defaults.swift), [`WizModels.swift`](Sources/Core/WizModels.swift)
+  - `Services/` — [`WizService.swift`](Sources/Services/WizService.swift), [`ScheduleManager.swift`](Sources/Services/ScheduleManager.swift)
+  - `Support/` — [`SelfTest.swift`](Sources/Support/SelfTest.swift)
+  - `UI/` — [`MainView.swift`](Sources/UI/MainView.swift), [`Sections/`](Sources/UI/Sections), [`Components/`](Sources/UI/Components)
+- `Tests/` — Standalone test runner and test cases for UDP commands, color conversions, and schedules
+- `Tools/` — [`make-dmg.sh`](Tools/make-dmg.sh) packaging script
 
-## Privacy and affiliation
+## Privacy and Affiliation
 
 Lumina controls bulbs on your local network and does not send bulb data to a cloud service. This is an independent community project and is not affiliated with or endorsed by Signify, Philips, or WiZ. Bulb features and local control behavior may vary by model, firmware, and security settings.
