@@ -8,11 +8,15 @@ public struct Bulb3DView: NSViewRepresentable {
     let isOn: Bool
     let color: NSColor
     let brightness: Double
+    let visualChangeToken: UInt
+    let bulbLabel: String
 
-    public init(isOn: Bool, color: NSColor, brightness: Double) {
+    public init(isOn: Bool, color: NSColor, brightness: Double, visualChangeToken: UInt = 0, bulbLabel: String = "PHILIPS") {
         self.isOn = isOn
         self.color = color
         self.brightness = brightness
+        self.visualChangeToken = visualChangeToken
+        self.bulbLabel = bulbLabel
     }
 
     public func makeCoordinator() -> Coordinator {
@@ -34,13 +38,14 @@ public struct Bulb3DView: NSViewRepresentable {
         let pan = NSPanGestureRecognizer(target: coordinator, action: #selector(Coordinator.handlePan(_:)))
         scnView.addGestureRecognizer(pan)
 
-        coordinator.startIdleAnimation()
-        coordinator.updateState(isOn: isOn, color: color, brightness: brightness, animated: false)
+        coordinator.updateBulbLabel(bulbLabel)
+        coordinator.updateState(isOn: isOn, color: color, brightness: brightness, visualChangeToken: visualChangeToken, animated: false)
         return scnView
     }
 
     public func updateNSView(_ nsView: SCNView, context: Context) {
-        context.coordinator.updateState(isOn: isOn, color: color, brightness: brightness, animated: true)
+        context.coordinator.updateBulbLabel(bulbLabel)
+        context.coordinator.updateState(isOn: isOn, color: color, brightness: brightness, visualChangeToken: visualChangeToken, animated: true)
     }
 
     // MARK: - Coordinator
@@ -50,18 +55,21 @@ public struct Bulb3DView: NSViewRepresentable {
 
         private let floatNode = SCNNode()
         private let pivotNode = SCNNode()
-        private let idleNode = SCNNode()
-        private let haloNode = SCNNode()
         private let animNode = SCNNode()
 
         private let domeMaterial = SCNMaterial()
         private let bodyMaterial = SCNMaterial()
-        private let haloMaterial = SCNMaterial()
+        private var logoNode: SCNNode?
+        private var currentBulbLabel = ""
         private let innerLight = SCNLight()
 
         private var angleX: Float = 0
         private var angleY: Float = 0
         private var interactionToken = 0
+        private var lastIsOn: Bool?
+        private var lastInputColor = SIMD3<Float>(-1, -1, -1)
+        private var lastBrightness: Float = -1
+        private var lastVisualChangeToken: UInt = 0
 
         // Animated visual state
         private let offDomeColor = SIMD3<Float>(0.80, 0.82, 0.86)
@@ -76,27 +84,12 @@ public struct Bulb3DView: NSViewRepresentable {
             scene.lightingEnvironment.contents = Coordinator.makeEnvironment()
             scene.lightingEnvironment.intensity = 1.1
 
-            // Soft halo behind the bulb
-            let haloPlane = SCNPlane(width: 6.5, height: 6.5)
-            haloMaterial.lightingModel = .constant
-            haloMaterial.diffuse.contents = Coordinator.makeHaloImage()
-            haloMaterial.blendMode = .alpha
-            haloMaterial.writesToDepthBuffer = false
-            haloMaterial.isDoubleSided = true
-            haloPlane.materials = [haloMaterial]
-            haloNode.geometry = haloPlane
-            haloNode.position = SCNVector3(0, -0.1, -1.3)
-            haloNode.renderingOrder = -10
-            haloNode.opacity = 0
-            scene.rootNode.addChildNode(haloNode)
-
             scene.rootNode.addChildNode(animNode)
 
-            // Node hierarchy: float -> pivot (user drag) -> idle (sway) -> bulb
+            // Node hierarchy: response motion -> pivot (user drag) -> bulb
             scene.rootNode.addChildNode(floatNode)
             floatNode.addChildNode(pivotNode)
-            pivotNode.addChildNode(idleNode)
-            buildBulb(in: idleNode)
+            buildBulb(in: pivotNode)
 
             // Camera
             let camera = SCNCamera()
@@ -133,6 +126,39 @@ public struct Bulb3DView: NSViewRepresentable {
 
             apply()
             return scene
+        }
+
+        func updateBulbLabel(_ label: String) {
+            let trimmed = String(label.prefix(18)).trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed == currentBulbLabel && (trimmed.isEmpty ? logoNode == nil : logoNode != nil) { return }
+            currentBulbLabel = trimmed
+            guard !trimmed.isEmpty else {
+                logoNode?.removeFromParentNode()
+                logoNode = nil
+                return
+            }
+
+            let logo = SCNText(string: trimmed, extrusionDepth: 0.004)
+            logo.font = NSFont(name: "Philips Sans", size: 0.15)
+                ?? NSFont.systemFont(ofSize: 0.15, weight: .bold)
+            logo.flatness = 0.005
+            let material = SCNMaterial()
+            material.lightingModel = .constant
+            material.diffuse.contents = NSColor(white: 0.27, alpha: 1)
+            material.emission.contents = NSColor(white: 0.27, alpha: 1)
+            material.isDoubleSided = true
+            logo.materials = [material]
+
+            if logoNode == nil {
+                logoNode = SCNNode()
+                pivotNode.addChildNode(logoNode!)
+            }
+            logoNode?.geometry = logo
+            let (minBound, maxBound) = logo.boundingBox
+            let width = maxBound.x - minBound.x
+            let scale: CGFloat = min(1, 0.90 / max(width, 0.001))
+            logoNode?.scale = SCNVector3(scale, scale, scale)
+            logoNode?.position = SCNVector3(-width * scale / 2, -0.30, 0.735)
         }
 
         private func buildBulb(in root: SCNNode) {
@@ -177,6 +203,8 @@ public struct Bulb3DView: NSViewRepresentable {
             let bodyGeo = Coordinator.lathe(bodyProfile)
             bodyGeo.materials = [bodyMaterial]
             root.addChildNode(SCNNode(geometry: bodyGeo))
+
+            updateBulbLabel(currentBulbLabel.isEmpty ? "PHILIPS" : currentBulbLabel)
 
             // 3. Rose gold band that follows the body curve
             var bandProfile: [CGPoint] = []
@@ -258,25 +286,12 @@ public struct Bulb3DView: NSViewRepresentable {
 
         // MARK: Animation and interaction
 
-        func startIdleAnimation() {
-            let up = SCNAction.moveBy(x: 0, y: 0.05, z: 0, duration: 2.4)
-            up.timingMode = .easeInEaseOut
-            floatNode.runAction(.repeatForever(.sequence([up, up.reversed()])), forKey: "float")
-
-            let swayA = SCNAction.rotateTo(x: 0.05, y: 0, z: 0.04, duration: 3.2)
-            swayA.timingMode = .easeInEaseOut
-            let swayB = SCNAction.rotateTo(x: -0.05, y: 0, z: -0.04, duration: 3.2)
-            swayB.timingMode = .easeInEaseOut
-            idleNode.runAction(.repeatForever(.sequence([swayA, swayB])), forKey: "sway")
-        }
-
         @objc func handlePan(_ gesture: NSPanGestureRecognizer) {
             let translation = gesture.translation(in: gesture.view)
 
             switch gesture.state {
             case .began:
                 interactionToken += 1
-                idleNode.isPaused = true
                 pivotNode.removeAction(forKey: "recenter")
                 angleX = Float(pivotNode.eulerAngles.x)
                 angleY = Float(pivotNode.eulerAngles.y)
@@ -295,7 +310,6 @@ public struct Bulb3DView: NSViewRepresentable {
                     let back = SCNAction.rotateTo(x: 0, y: 0, z: 0, duration: 0.9, usesShortestUnitArc: true)
                     back.timingMode = .easeInEaseOut
                     self.pivotNode.runAction(back, forKey: "recenter")
-                    self.idleNode.isPaused = false
                 }
             default:
                 break
@@ -304,9 +318,17 @@ public struct Bulb3DView: NSViewRepresentable {
 
         // MARK: State
 
-        func updateState(isOn: Bool, color: NSColor, brightness: Double, animated: Bool) {
+        func updateState(isOn: Bool, color: NSColor, brightness: Double, visualChangeToken: UInt, animated: Bool) {
             let rgb = Coordinator.rgb(color)
             let level = Float(min(max(brightness, 0), 100) / 100)
+            let changed = lastIsOn.map { $0 != isOn } ?? false
+                || simd_distance(lastInputColor, rgb) > 0.005
+                || abs(lastBrightness - level) > 0.005
+                || lastVisualChangeToken != visualChangeToken
+            lastIsOn = isOn
+            lastInputColor = rgb
+            lastBrightness = level
+            lastVisualChangeToken = visualChangeToken
             let dim = 0.30 + 0.70 * level
 
             let targetDome = isOn ? rgb * dim : offDomeColor
@@ -314,6 +336,16 @@ public struct Bulb3DView: NSViewRepresentable {
             let targetTint = isOn ? rgb : tint
 
             animNode.removeAction(forKey: "state")
+
+            if animated && changed {
+                floatNode.removeAction(forKey: "response")
+                floatNode.position.y = 0
+                let up = SCNAction.moveBy(x: 0, y: 0.09, z: 0, duration: 0.16)
+                up.timingMode = .easeOut
+                let down = SCNAction.moveBy(x: 0, y: -0.09, z: 0, duration: 0.22)
+                down.timingMode = .easeInEaseOut
+                floatNode.runAction(.sequence([up, down]), forKey: "response")
+            }
 
             if !animated {
                 domeColor = targetDome
@@ -353,8 +385,6 @@ public struct Bulb3DView: NSViewRepresentable {
             innerLight.color = tintColor
             innerLight.intensity = CGFloat(500 * glow)
 
-            haloMaterial.multiply.contents = tintColor
-            haloNode.opacity = CGFloat(glow * 0.75)
         }
 
         // MARK: Helpers
@@ -492,17 +522,5 @@ public struct Bulb3DView: NSViewRepresentable {
             }
         }
 
-        static func makeHaloImage() -> NSImage {
-            let size = NSSize(width: 256, height: 256)
-            return NSImage(size: size, flipped: false) { rect in
-                let white = NSColor.white
-                let gradient = NSGradient(
-                    colors: [white.withAlphaComponent(0.9), white.withAlphaComponent(0.35), white.withAlphaComponent(0.0)],
-                    atLocations: [0, 0.45, 1],
-                    colorSpace: .sRGB)
-                gradient?.draw(in: rect, relativeCenterPosition: NSPoint(x: 0, y: 0))
-                return true
-            }
-        }
     }
 }

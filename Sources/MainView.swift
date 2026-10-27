@@ -15,20 +15,9 @@ public struct MainView: View {
                 .padding(.top, 12)
                 .padding(.bottom, 6)
 
-            // 3D Bulb View (Interactive live render)
-            ZStack {
-                // Subtle ambient glow behind the 3D bulb
-                if wiz.isOn {
-                    Circle()
-                        .fill(Color(wiz.color).opacity(0.25 * (wiz.brightness / 100.0)))
-                        .frame(width: 130, height: 130)
-                        .blur(radius: 25)
-                        .offset(y: -10)
-                }
-
-                Bulb3DView(isOn: wiz.isOn, color: wiz.color, brightness: wiz.brightness)
-                    .frame(height: 135)
-            }
+            // 3D bulb remains on a transparent background; it bobs only when a control changes.
+            Bulb3DView(isOn: wiz.isOn, color: wiz.color, brightness: wiz.brightness, visualChangeToken: wiz.visualChangeToken, bulbLabel: vm.bulbLabel)
+                .frame(height: 135)
             .padding(.bottom, 6)
 
             // Mode Selector (Color / Warmth / Scenes)
@@ -264,32 +253,53 @@ public struct MainView: View {
 
     private var scenesGridView: some View {
         ScrollView(showsIndicators: false) {
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                ForEach(wiz.availableScenes) { scene in
-                    let isSelected = wiz.activeSceneId == scene.id
-                    Button(action: {
-                        wiz.setScene(scene)
-                    }) {
-                        HStack(spacing: 7) {
-                            Image(systemName: scene.icon)
-                                .font(.system(size: 13))
-                                .foregroundColor(isSelected ? .white : .primary)
-                            Text(scene.name)
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(isSelected ? .white : .primary)
-                            Spacer()
+            VStack(alignment: .leading, spacing: 9) {
+                Text("COLOR FLOWS")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(.secondary)
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 7) {
+                    ForEach(wiz.colorFlowPresets) { preset in
+                        let isSelected = wiz.activeColorFlow == preset.id
+                        Button {
+                            if isSelected { wiz.stopColorFlow() }
+                            else { wiz.startColorFlow(preset) }
+                        } label: {
+                            HStack(spacing: 7) {
+                                Image(systemName: preset.icon).font(.system(size: 12))
+                                Text(preset.id).font(.system(size: 11, weight: .medium))
+                                Spacer(minLength: 0)
+                                if isSelected { Image(systemName: "pause.fill").font(.system(size: 9)) }
+                            }
+                            .foregroundColor(isSelected ? .white : .primary)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 7)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(isSelected ? Color.accentColor : Color.primary.opacity(0.06)))
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(isSelected ? Color.accentColor : Color.primary.opacity(0.06))
-                        )
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
-            }
-            .padding(.top, 4)
+                Text("SCENES")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .padding(.top, 2)
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 7) {
+                    ForEach(wiz.availableScenes) { scene in
+                        let isSelected = wiz.activeSceneId == scene.id
+                        Button(action: { wiz.setScene(scene) }) {
+                            HStack(spacing: 7) {
+                                Image(systemName: scene.icon).font(.system(size: 12))
+                                Text(scene.name).font(.system(size: 11, weight: .medium))
+                                Spacer(minLength: 0)
+                            }
+                            .foregroundColor(isSelected ? .white : .primary)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 7)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(isSelected ? Color.accentColor : Color.primary.opacity(0.06)))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }.padding(.vertical, 4)
         }
     }
 
@@ -358,6 +368,15 @@ public struct MainView: View {
                     }
                     .controlSize(.small)
                 }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Bulb label")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                TextField("PHILIPS", text: $vm.bulbLabel)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 12))
             }
 
             Divider()

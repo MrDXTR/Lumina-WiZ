@@ -2,6 +2,14 @@ import Foundation
 import AppKit
 import Combine
 
+private extension NSColor {
+    convenience init(hexRGB: UInt32) {
+        self.init(srgbRed: CGFloat((hexRGB >> 16) & 0xff) / 255,
+                  green: CGFloat((hexRGB >> 8) & 0xff) / 255,
+                  blue: CGFloat(hexRGB & 0xff) / 255, alpha: 1)
+    }
+}
+
 public enum BulbControlMode: String, CaseIterable, Identifiable {
     case color = "Color"
     case temperature = "White"
@@ -13,6 +21,12 @@ public enum BulbControlMode: String, CaseIterable, Identifiable {
 public struct WizScene: Identifiable {
     public let id: Int
     public let name: String
+    public let icon: String
+}
+
+public struct ColorFlowPreset: Identifiable {
+    public let id: String
+    public let colors: [NSColor]
     public let icon: String
 }
 
@@ -32,6 +46,8 @@ public final class WizService: ObservableObject {
     @Published public var temperature: Double = 3500.0 // 2200 to 6500 Kelvin
     @Published public var activeMode: BulbControlMode = .temperature
     @Published public var activeSceneId: Int = 0
+    @Published public var activeColorFlow: String?
+    @Published public var visualChangeToken: UInt = 0
     @Published public var isConnected: Bool = false
     @Published public var isScanning: Bool = false
     @Published public var lastErrorMessage: String? = nil
@@ -49,9 +65,20 @@ public final class WizService: ObservableObject {
         WizScene(id: 5, name: "Forest", icon: "leaf.fill")
     ]
 
+    public let colorFlowPresets: [ColorFlowPreset] = [
+        ColorFlowPreset(id: "Diwali", colors: [NSColor(hexRGB: 0xFF7A18), NSColor(hexRGB: 0xFFD447), NSColor(hexRGB: 0xE83E8C), NSColor(hexRGB: 0xFF7A18)], icon: "sparkles"),
+        ColorFlowPreset(id: "Aurora", colors: [NSColor(hexRGB: 0x13C4A3), NSColor(hexRGB: 0x2678E8), NSColor(hexRGB: 0x8B5CF6), NSColor(hexRGB: 0x13C4A3)], icon: "sun.horizon.fill"),
+        ColorFlowPreset(id: "Sunset", colors: [NSColor(hexRGB: 0xFF4D4D), NSColor(hexRGB: 0xFF9F43), NSColor(hexRGB: 0xB33981), NSColor(hexRGB: 0xFF4D4D)], icon: "sunset.fill"),
+        ColorFlowPreset(id: "Ocean", colors: [NSColor(hexRGB: 0x00B4D8), NSColor(hexRGB: 0x4361EE), NSColor(hexRGB: 0x48CAE4), NSColor(hexRGB: 0x00B4D8)], icon: "water.waves")
+    ]
+
     private let networkQueue = DispatchQueue(label: "com.lumina.network", qos: .userInitiated)
     private var debounceWorkItem: DispatchWorkItem?
     private var pollTimer: Timer?
+    private var colorFlowTimer: Timer?
+    private var colorFlowPreset: ColorFlowPreset?
+    private var colorFlowSegment = 0
+    private var colorFlowStep = 0
     private var controlRevision: UInt64 = 0
     private var lastLocalControlAt = Date.distantPast
     private let udpPort: UInt16 = 38899
@@ -128,11 +155,15 @@ public final class WizService: ObservableObject {
     }
 
     public func setPower(_ state: Bool) {
+        noteLocalControl()
+        noteVisualChange()
         self.isOn = state
         sendPilotCommand(["state": state])
     }
 
     public func setBrightness(_ value: Double) {
+        stopColorFlow()
+        noteVisualChange()
         noteLocalControl()
         let clamped = max(10.0, min(100.0, value))
         self.brightness = clamped
@@ -142,6 +173,8 @@ public final class WizService: ObservableObject {
     }
 
     public func setColor(_ newColor: NSColor) {
+        stopColorFlow()
+        noteVisualChange()
         noteLocalControl()
         self.color = newColor
         self.activeMode = .color
@@ -163,6 +196,8 @@ public final class WizService: ObservableObject {
     }
 
     public func setTemperature(_ kelvin: Double) {
+        stopColorFlow()
+        noteVisualChange()
         noteLocalControl()
         let clamped = max(2200.0, min(6500.0, kelvin))
         self.temperature = clamped
@@ -181,6 +216,8 @@ public final class WizService: ObservableObject {
     }
 
     public func setScene(_ scene: WizScene) {
+        stopColorFlow()
+        noteVisualChange()
         noteLocalControl()
         self.activeSceneId = scene.id
         self.activeMode = .scenes
@@ -196,12 +233,62 @@ public final class WizService: ObservableObject {
 
     public func selectMode(_ mode: BulbControlMode) {
         noteLocalControl()
+        if mode != .scenes { stopColorFlow() }
         activeMode = mode
+    }
+
+    public func startColorFlow(_ preset: ColorFlowPreset) {
+        stopColorFlow()
+        noteVisualChange()
+        noteLocalControl()
+        activeMode = .scenes
+        activeSceneId = 0
+        colorFlowPreset = preset
+        activeColorFlow = preset.id
+        colorFlowSegment = 0
+        colorFlowStep = 0
+        advanceColorFlow()
+        colorFlowTimer = Timer.scheduledTimer(withTimeInterval: 0.55, repeats: true) { [weak self] _ in
+            self?.advanceColorFlow()
+        }
+    }
+
+    public func stopColorFlow() {
+        colorFlowTimer?.invalidate()
+        colorFlowTimer = nil
+        colorFlowPreset = nil
+        activeColorFlow = nil
+    }
+
+    private func advanceColorFlow() {
+        guard let preset = colorFlowPreset, preset.colors.count > 1 else { return }
+        let start = preset.colors[colorFlowSegment].usingColorSpace(.sRGB) ?? .white
+        let end = preset.colors[(colorFlowSegment + 1) % preset.colors.count].usingColorSpace(.sRGB) ?? .white
+        let t = CGFloat(colorFlowStep) / 10.0
+        let next = NSColor(srgbRed: start.redComponent + (end.redComponent - start.redComponent) * t,
+                           green: start.greenComponent + (end.greenComponent - start.greenComponent) * t,
+                           blue: start.blueComponent + (end.blueComponent - start.blueComponent) * t,
+                           alpha: 1)
+        color = next
+        noteVisualChange()
+        let r = Int(round(next.redComponent * 255))
+        let g = Int(round(next.greenComponent * 255))
+        let b = Int(round(next.blueComponent * 255))
+        sendPilotCommand(["state": true, "r": r, "g": g, "b": b, "dimming": Int(brightness)])
+        colorFlowStep += 1
+        if colorFlowStep > 10 {
+            colorFlowStep = 0
+            colorFlowSegment = (colorFlowSegment + 1) % (preset.colors.count - 1)
+        }
     }
 
     private func noteLocalControl() {
         controlRevision &+= 1
         lastLocalControlAt = Date()
+    }
+
+    private func noteVisualChange() {
+        visualChangeToken &+= 1
     }
 
     // MARK: - Pilot Command Execution
