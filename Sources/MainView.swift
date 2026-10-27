@@ -16,7 +16,7 @@ public struct MainView: View {
                 .padding(.bottom, 6)
 
             // 3D bulb remains on a transparent background; it bobs only when a control changes.
-            Bulb3DView(isOn: wiz.isOn, color: wiz.color, brightness: wiz.brightness, visualChangeToken: wiz.visualChangeToken, bulbLabel: vm.bulbLabel)
+            Bulb3DView(isOn: wiz.isOn, color: wiz.color, brightness: wiz.brightness, visualChangeToken: wiz.visualChangeToken)
                 .frame(height: 135)
             .padding(.bottom, 6)
 
@@ -368,15 +368,6 @@ public struct MainView: View {
                     }
                     .controlSize(.small)
                 }
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Bulb label")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                TextField("PHILIPS", text: $vm.bulbLabel)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 12))
             }
 
             Divider()
