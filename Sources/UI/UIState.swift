@@ -8,30 +8,21 @@ public final class ColorWheelViewModel: ObservableObject {
     @Published public var hexText: String = ""
     @Published public var favoriteColors: [String] = []
 
-    private let favoritesKey = "LuminaFavoriteColors"
-
     public init() {
         loadFavorites()
     }
 
     public func loadFavorites() {
-        if let saved = UserDefaults.standard.stringArray(forKey: favoritesKey), !saved.isEmpty {
+        if let saved = UserDefaults.standard.stringArray(forKey: DefaultsKey.favoriteColors), !saved.isEmpty {
             self.favoriteColors = Array(saved.prefix(5))
         } else {
-            // 5 elegant initial defaults
-            self.favoriteColors = [
-                "#FFB347", // Warm Peach
-                "#FF477E", // Neon Coral
-                "#8B5CF6", // Electric Violet
-                "#00B4D8", // Cyan Wave
-                "#10B981"  // Emerald Glow
-            ]
+            self.favoriteColors = Defaults.defaultFavorites
             saveFavorites()
         }
     }
 
     public func saveFavorites() {
-        UserDefaults.standard.set(favoriteColors, forKey: favoritesKey)
+        UserDefaults.standard.set(favoriteColors, forKey: DefaultsKey.favoriteColors)
     }
 
     public func addCurrentColorAsFavorite(_ hex: String) {
@@ -56,6 +47,8 @@ public final class ColorWheelViewModel: ObservableObject {
 }
 
 public final class MainViewModel: ObservableObject {
+    public static let shared = MainViewModel()
+
     @Published public var showingSettings: Bool = false
     @Published public var showingAlarmSheet: Bool = false
     @Published public var customIP: String = ""

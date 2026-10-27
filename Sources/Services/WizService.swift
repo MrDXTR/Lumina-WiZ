@@ -2,45 +2,12 @@ import Foundation
 import AppKit
 import Combine
 
-private extension NSColor {
-    convenience init(hexRGB: UInt32) {
-        self.init(srgbRed: CGFloat((hexRGB >> 16) & 0xff) / 255.0,
-                  green: CGFloat((hexRGB >> 8) & 0xff) / 255.0,
-                  blue: CGFloat(hexRGB & 0xff) / 255.0, alpha: 1.0)
-    }
-}
-
-public enum BulbControlMode: String, CaseIterable, Identifiable {
-    case color = "Color"
-    case temperature = "White"
-    case scenes = "Scenes"
-    case alarms = "Alarm"
-
-    public var id: String { rawValue }
-}
-
-public struct WizScene: Identifiable, Equatable {
-    public let id: Int
-    public let name: String
-    public let icon: String
-    public let isDynamic: Bool
-    public let previewColor: NSColor
-
-    public init(id: Int, name: String, icon: String, isDynamic: Bool = true, previewColor: NSColor = .white) {
-        self.id = id
-        self.name = name
-        self.icon = icon
-        self.isDynamic = isDynamic
-        self.previewColor = previewColor
-    }
-}
-
 public final class WizService: ObservableObject {
     public static let shared = WizService()
 
     @Published public var ipAddress: String {
         didSet {
-            UserDefaults.standard.set(ipAddress, forKey: "WizBulbIP")
+            UserDefaults.standard.set(ipAddress, forKey: DefaultsKey.bulbIP)
             refreshStatus()
         }
     }
@@ -87,11 +54,11 @@ public final class WizService: ObservableObject {
     private let udpPort: UInt16 = 38899
 
     private init() {
-        let savedIP = UserDefaults.standard.string(forKey: "WizBulbIP") ?? "192.168.0.5"
+        let savedIP = UserDefaults.standard.string(forKey: DefaultsKey.bulbIP) ?? Defaults.defaultIP
         self.ipAddress = savedIP
 
-        let savedSpeed = UserDefaults.standard.double(forKey: "WizDynamicSpeed")
-        self.dynamicSpeed = savedSpeed >= 20.0 ? savedSpeed : 100.0
+        let savedSpeed = UserDefaults.standard.double(forKey: DefaultsKey.dynamicSpeed)
+        self.dynamicSpeed = savedSpeed >= 20.0 ? savedSpeed : Defaults.defaultSpeed
 
         // Initial fetch
         refreshStatus()
@@ -106,6 +73,24 @@ public final class WizService: ObservableObject {
 
     deinit {
         pollTimer?.invalidate()
+    }
+
+    // MARK: - UDP Payload Formatting
+
+    public static func makePilotPayload(params: [String: Any]) -> [String: Any] {
+        return [
+            "method": "setPilot",
+            "env": "pro",
+            "params": params
+        ]
+    }
+
+    public static func makeGetPilotPayload() -> [String: Any] {
+        return [
+            "method": "getPilot",
+            "env": "pro",
+            "params": [:] as [String: Any]
+        ]
     }
 
     // MARK: - UDP Socket Communication
@@ -190,6 +175,7 @@ public final class WizService: ObservableObject {
         let r = Int(round(rgb.redComponent * 255))
         let g = Int(round(rgb.greenComponent * 255))
         let b = Int(round(rgb.blueComponent * 255))
+        let dimming = Int(self.brightness)
 
         debouncePilotCommand {
             [
@@ -197,7 +183,7 @@ public final class WizService: ObservableObject {
                 "r": r,
                 "g": g,
                 "b": b,
-                "dimming": Int(self.brightness)
+                "dimming": dimming
             ]
         }
     }
@@ -210,14 +196,13 @@ public final class WizService: ObservableObject {
         self.activeMode = .temperature
         self.activeSceneId = 0
 
-        // Approximate color for 3D representation
-        self.color = kelvinToColor(kelvin)
+        // Synchronize visual color representation with temperature
+        self.color = kelvinToColor(clamped)
 
         debouncePilotCommand {
             [
                 "state": true,
-                "temp": Int(clamped),
-                "dimming": Int(self.brightness)
+                "temp": Int(clamped)
             ]
         }
     }
@@ -229,59 +214,64 @@ public final class WizService: ObservableObject {
         self.activeMode = .scenes
         self.color = scene.previewColor
 
-        debouncePilotCommand {
-            var params: [String: Any] = [
-                "state": true,
-                "sceneId": scene.id,
-                "dimming": Int(self.brightness)
-            ]
-            if scene.isDynamic {
-                params["speed"] = Int(self.dynamicSpeed)
-            }
-            return params
+        var params: [String: Any] = [
+            "state": true,
+            "sceneId": scene.id
+        ]
+        if scene.isDynamic {
+            params["speed"] = Int(dynamicSpeed)
         }
+
+        debounceWorkItem?.cancel()
+        debounceWorkItem = nil
+        sendPilotCommand(params)
     }
 
-    public func setSceneIdDirect(_ sceneId: Int, speed: Int? = nil) {
+    public func setSceneIdDirect(_ sceneId: Int, speed: Int? = nil, brightness: Double? = nil) {
         noteVisualChange()
         noteLocalControl()
         self.activeSceneId = sceneId
-        if let scene = availableScenes.first(where: { $0.id == sceneId }) {
-            self.color = scene.previewColor
-        }
+        self.activeMode = .scenes
 
         var params: [String: Any] = [
             "state": true,
-            "sceneId": sceneId,
-            "dimming": Int(self.brightness)
+            "sceneId": sceneId
         ]
-        params["speed"] = speed ?? Int(self.dynamicSpeed)
+        if let speed = speed {
+            params["speed"] = speed
+        }
+        if let brightness = brightness {
+            params["dimming"] = Int(max(10.0, min(100.0, brightness)))
+        }
+
+        debounceWorkItem?.cancel()
+        debounceWorkItem = nil
         sendPilotCommand(params)
     }
 
     public func setSpeed(_ speedValue: Double) {
         let clamped = max(20.0, min(100.0, speedValue))
         self.dynamicSpeed = clamped
-        UserDefaults.standard.set(clamped, forKey: "WizDynamicSpeed")
+        UserDefaults.standard.set(clamped, forKey: DefaultsKey.dynamicSpeed)
 
-        // If bulb is playing a dynamic scene, update speed immediately on bulb hardware
-        if isOn && activeSceneId > 0 {
-            if let scene = availableScenes.first(where: { $0.id == activeSceneId }), scene.isDynamic {
-                debouncePilotCommand {
-                    [
-                        "state": true,
-                        "sceneId": self.activeSceneId,
-                        "speed": Int(clamped),
-                        "dimming": Int(self.brightness)
-                    ]
-                }
-            }
+        // Only send if current mode is a dynamic scene
+        guard activeMode == .scenes,
+              let activeScene = availableScenes.first(where: { $0.id == activeSceneId }),
+              activeScene.isDynamic else {
+            return
+        }
+
+        debouncePilotCommand {
+            [
+                "state": true,
+                "sceneId": activeScene.id,
+                "speed": Int(clamped)
+            ]
         }
     }
 
     public func selectMode(_ mode: BulbControlMode) {
-        noteLocalControl()
-        activeMode = mode
+        self.activeMode = mode
     }
 
     private func noteLocalControl() {
@@ -293,63 +283,66 @@ public final class WizService: ObservableObject {
         visualChangeToken &+= 1
     }
 
-    // MARK: - Pilot Command Execution
-
     private func debouncePilotCommand(payloadGenerator: @escaping () -> [String: Any]) {
         debounceWorkItem?.cancel()
-        let item = DispatchWorkItem { [weak self] in
-            let payload = payloadGenerator()
-            self?.sendPilotCommand(payload)
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.sendPilotCommand(payloadGenerator())
         }
-        debounceWorkItem = item
-        networkQueue.asyncAfter(deadline: .now() + 0.04, execute: item)
+        debounceWorkItem = workItem
+        networkQueue.asyncAfter(deadline: .now() + 0.12, execute: workItem)
     }
 
     private func sendPilotCommand(_ params: [String: Any]) {
-        let currentIP = self.ipAddress
+        let targetIP = self.ipAddress
+        let payload: [String: Any] = [
+            "method": "setPilot",
+            "env": "pro",
+            "params": params
+        ]
+
         networkQueue.async { [weak self] in
             guard let self = self else { return }
-            let req: [String: Any] = [
-                "method": "setPilot",
-                "params": params
-            ]
-            let resp = self.sendUDP(payload: req, host: currentIP, timeout: 0.8)
+            let response = self.sendUDP(payload: payload, host: targetIP, timeout: 0.8)
 
             DispatchQueue.main.async {
-                if let resp = resp {
-                    if let result = resp["result"] as? [String: Any], (result["success"] as? Bool) == true {
-                        self.isConnected = true
-                        self.lastErrorMessage = nil
-                    } else if let error = resp["error"] as? [String: Any] {
-                        let code = error["code"] as? Int ?? 0
-                        if code == -32602 {
-                            self.lastErrorMessage = "Bulb requires 'Allow all controls' in WiZ App (Settings > Security)."
-                        } else {
-                            self.lastErrorMessage = error["message"] as? String ?? "Command error"
-                        }
-                    }
+                if let resp = response, resp["error"] == nil {
+                    self.isConnected = true
+                    self.lastErrorMessage = nil
                 } else {
-                    self.isConnected = false
-                    self.lastErrorMessage = "No response from \(currentIP)"
+                    if let err = response?["error"] as? [String: Any],
+                       let code = err["code"] {
+                        self.lastErrorMessage = "Bulb returned error code: \(code)"
+                    }
                 }
             }
         }
     }
 
-    // MARK: - Query State
+    // MARK: - State Refresh & Status Polling
 
     public func refreshStatus() {
-        let currentIP = self.ipAddress
-        let revisionAtRequest = controlRevision
+        let targetIP = self.ipAddress
+        let payload: [String: Any] = [
+            "method": "getPilot",
+            "env": "pro",
+            "params": [:] as [String: Any]
+        ]
+
+        let fetchRevision = self.controlRevision
+
         networkQueue.async { [weak self] in
             guard let self = self else { return }
-            let req: [String: Any] = ["method": "getPilot", "params": [:]]
-            let resp = self.sendUDP(payload: req, host: currentIP, timeout: 0.8)
+            let response = self.sendUDP(payload: payload, host: targetIP, timeout: 1.0)
 
             DispatchQueue.main.async {
-                let mayApplyControls = revisionAtRequest == self.controlRevision
-                    && Date().timeIntervalSince(self.lastLocalControlAt) > 2.0
-                guard let resp = resp else {
+                // If the user operated local controls while this was in flight, ignore
+                if fetchRevision != self.controlRevision || Date().timeIntervalSince(self.lastLocalControlAt) < 1.0 {
+                    return
+                }
+
+                guard let resp = response,
+                      let result = resp["result"] as? [String: Any] else {
                     self.isConnected = false
                     return
                 }
@@ -357,84 +350,108 @@ public final class WizService: ObservableObject {
                 self.isConnected = true
                 self.lastErrorMessage = nil
 
-                if mayApplyControls, let result = resp["result"] as? [String: Any] {
-                    if let state = result["state"] as? Bool {
-                        self.isOn = state
-                    }
-                    if let dimming = result["dimming"] as? Int {
-                        self.brightness = Double(dimming)
-                    }
-                    if let speed = result["speed"] as? Int, speed >= 20 {
-                        self.dynamicSpeed = Double(speed)
-                    }
-                    if let temp = result["temp"] as? Int {
-                        self.temperature = Double(temp)
-                        if (result["sceneId"] as? Int ?? 0) == 0 && result["r"] == nil {
-                            self.color = self.kelvinToColor(Double(temp))
-                        }
-                    }
-                    if let r = result["r"] as? Int, let g = result["g"] as? Int, let b = result["b"] as? Int {
-                        self.color = NSColor(srgbRed: CGFloat(r)/255.0, green: CGFloat(g)/255.0, blue: CGFloat(b)/255.0, alpha: 1.0)
-                    }
-                    if let sceneId = result["sceneId"] as? Int, sceneId > 0 {
-                        self.activeSceneId = sceneId
-                        if let matched = self.availableScenes.first(where: { $0.id == sceneId }) {
-                            self.color = matched.previewColor
-                        }
-                    }
+                if let state = result["state"] as? Bool {
+                    self.isOn = state
+                }
+                if let dim = result["dimming"] as? Double {
+                    self.brightness = dim
+                }
+                if let temp = result["temp"] as? Double {
+                    self.temperature = temp
+                    self.color = self.kelvinToColor(temp)
+                }
+                if let r = result["r"] as? Double,
+                   let g = result["g"] as? Double,
+                   let b = result["b"] as? Double {
+                    self.color = NSColor(srgbRed: r / 255.0, green: g / 255.0, blue: b / 255.0, alpha: 1.0)
+                }
+                if let sceneId = result["sceneId"] as? Int, sceneId > 0 {
+                    self.activeSceneId = sceneId
+                }
+                if let spd = result["speed"] as? Double {
+                    self.dynamicSpeed = spd
                 }
             }
         }
     }
 
-    // MARK: - Auto Network Discovery
+    // MARK: - IP Rescan & Discovery
 
     public func rescanNetwork() {
         guard !isScanning else { return }
         isScanning = true
-        lastErrorMessage = "Scanning network..."
 
         networkQueue.async { [weak self] in
             guard let self = self else { return }
 
-            let group = DispatchGroup()
-            var discoveredIP: String? = nil
-            let lock = NSLock()
+            let broadcastPayload: [String: Any] = [
+                "method": "getPilot",
+                "env": "pro",
+                "params": [:] as [String: Any]
+            ]
+            guard let jsonData = try? JSONSerialization.data(withJSONObject: broadcastPayload, options: []) else {
+                DispatchQueue.main.async { self.isScanning = false }
+                return
+            }
 
-            for i in 1...254 {
-                let candidateIP = "192.168.0.\(i)"
-                group.enter()
-                DispatchQueue.global(qos: .userInitiated).async {
-                    let req: [String: Any] = ["method": "getPilot", "params": [:]]
-                    if let resp = self.sendUDP(payload: req, host: candidateIP, timeout: 0.35) {
-                        if resp["result"] != nil || resp["method"] as? String == "getPilot" {
-                            lock.lock()
-                            if discoveredIP == nil {
-                                discoveredIP = candidateIP
-                            }
-                            lock.unlock()
-                        }
+            let fd = socket(AF_INET, SOCK_DGRAM, 0)
+            guard fd >= 0 else {
+                DispatchQueue.main.async { self.isScanning = false }
+                return
+            }
+            defer { close(fd) }
+
+            var broadcastEnable: Int32 = 1
+            setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &broadcastEnable, socklen_t(MemoryLayout<Int32>.size))
+
+            var tv = timeval(tv_sec: 1, tv_usec: 500_000)
+            setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+
+            var addr = sockaddr_in()
+            addr.sin_family = sa_family_t(AF_INET)
+            addr.sin_port = in_port_t(self.udpPort.bigEndian)
+            inet_pton(AF_INET, "255.255.255.255", &addr.sin_addr)
+
+            _ = withUnsafePointer(to: &addr) { ptr -> Int in
+                ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { saPtr in
+                    jsonData.withUnsafeBytes { rawPtr in
+                        sendto(fd, rawPtr.baseAddress, jsonData.count, 0, saPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
                     }
-                    group.leave()
                 }
             }
 
-            group.wait()
+            var buffer = [UInt8](repeating: 0, count: 2048)
+            var srcAddr = sockaddr_in()
+            var srcLen = socklen_t(MemoryLayout<sockaddr_in>.size)
 
-            DispatchQueue.main.async {
-                self.isScanning = false
-                if let found = discoveredIP {
-                    self.ipAddress = found
-                    self.lastErrorMessage = nil
+            let recvd = withUnsafeMutablePointer(to: &srcAddr) { ptr -> Int in
+                ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { saPtr in
+                    recvfrom(fd, &buffer, buffer.count, 0, saPtr, &srcLen)
+                }
+            }
+
+            if recvd > 0 {
+                var ipStr = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+                inet_ntop(AF_INET, &srcAddr.sin_addr, &ipStr, socklen_t(INET_ADDRSTRLEN))
+                let discoveredIP = String(cString: ipStr)
+
+                DispatchQueue.main.async {
+                    self.ipAddress = discoveredIP
+                    self.isScanning = false
                     self.refreshStatus()
-                } else {
-                    self.lastErrorMessage = "Bulb not found on network."
+                }
+            } else {
+                DispatchQueue.main.async {
+                    self.isScanning = false
+                    if !self.isConnected {
+                        self.lastErrorMessage = "Discovery broadcast timed out. Enter IP manually in Settings."
+                    }
                 }
             }
         }
     }
 
-    // MARK: - Color Temp Helper
+    // MARK: - Color Conversion Helpers
 
     public func kelvinToColor(_ kelvin: Double) -> NSColor {
         let temp = kelvin / 100.0
@@ -442,32 +459,35 @@ public final class WizService: ObservableObject {
         var green: Double
         var blue: Double
 
-        if temp <= 66 {
-            red = 255
+        // Red calculation
+        if temp <= 66.0 {
+            red = 255.0
         } else {
-            red = temp - 60
+            red = temp - 60.0
             red = 329.698727446 * pow(red, -0.1332047592)
-            red = max(0, min(255, red))
+            red = max(0.0, min(255.0, red))
         }
 
-        if temp <= 66 {
+        // Green calculation
+        if temp <= 66.0 {
             green = temp
             green = 99.4708025861 * log(green) - 161.1195681661
-            green = max(0, min(255, green))
+            green = max(0.0, min(255.0, green))
         } else {
-            green = temp - 60
+            green = temp - 60.0
             green = 288.1221695283 * pow(green, -0.0755148492)
-            green = max(0, min(255, green))
+            green = max(0.0, min(255.0, green))
         }
 
-        if temp >= 66 {
-            blue = 255
-        } else if temp <= 19 {
-            blue = 0
+        // Blue calculation
+        if temp >= 66.0 {
+            blue = 255.0
+        } else if temp <= 19.0 {
+            blue = 0.0
         } else {
-            blue = temp - 10
+            blue = temp - 10.0
             blue = 138.5177312231 * log(blue) - 305.0447927307
-            blue = max(0, min(255, blue))
+            blue = max(0.0, min(255.0, blue))
         }
 
         return NSColor(srgbRed: CGFloat(red / 255.0),

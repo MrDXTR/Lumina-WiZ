@@ -1,5 +1,7 @@
 .build/
-Lumina.app/
+build/
+dist/
+*.app/
 .DS_Store
 .agents
 .claude
