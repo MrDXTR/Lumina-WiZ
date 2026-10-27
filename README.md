@@ -1,5 +1,9 @@
 # Lumina WiZ
 
+<p align="center">
+  <img src="public/AppIcon.png" width="128" height="128" alt="Lumina App Icon">
+</p>
+
 A small, native macOS menu bar controller for WiZ smart bulbs. Lumina talks directly to the bulb over your local network, with no account, cloud service, or third-party package dependencies.
 
 ## Screenshots

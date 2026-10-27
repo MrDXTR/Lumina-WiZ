@@ -82,6 +82,11 @@ RESOURCES_DIR="$CONTENTS_DIR/Resources"
 mkdir -p "$MACOS_DIR"
 mkdir -p "$RESOURCES_DIR"
 
+# Copy Resources if available (App icons, assets)
+if [[ -d "$DIR/Resources" ]]; then
+    cp -R "$DIR/Resources/"* "$RESOURCES_DIR/" 2>/dev/null || true
+fi
+
 # Generate Info.plist with appropriate Bundle ID and Display Name
 cat << EOF > "$CONTENTS_DIR/Info.plist"
 <?xml version="1.0" encoding="UTF-8"?>
@@ -96,6 +101,8 @@ cat << EOF > "$CONTENTS_DIR/Info.plist"
     <string>$APP_NAME</string>
     <key>CFBundleDisplayName</key>
     <string>$APP_NAME</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
