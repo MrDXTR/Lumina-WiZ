@@ -6,7 +6,7 @@ A small, native macOS menu bar controller for WiZ smart bulbs. Lumina talks dire
 
 | Color controls | Scenes and color flows |
 | --- | --- |
-| ![Lumina color controls](SS1.png) | ![Lumina scenes and color flows](SS2.png) |
+| ![Lumina color controls](public/SS1.png) | ![Lumina scenes and color flows](public/SS2.png) |
 
 ## Features
 
@@ -48,7 +48,7 @@ Lumina sends unsigned local UDP commands to port `38899`. Bulbs configured to re
 - `Info.plist` — app bundle metadata
 - `Package.swift` — Swift package manifest
 - `build.sh` — standalone app bundle build script
-- `SS1.png`, `SS2.png` — screenshots used above
+- `public/SS1.png`, `public/SS2.png` — screenshots used above
 
 ## Privacy and affiliation
 

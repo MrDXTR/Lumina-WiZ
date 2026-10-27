@@ -59,7 +59,7 @@ public struct Bulb3DView: NSViewRepresentable {
 
         private let domeMaterial = SCNMaterial()
         private let bodyMaterial = SCNMaterial()
-        private var logoNode: SCNNode?
+        private var logoNodes: [SCNNode] = []
         private var currentBulbLabel = ""
         private let innerLight = SCNLight()
 
@@ -130,35 +130,56 @@ public struct Bulb3DView: NSViewRepresentable {
 
         func updateBulbLabel(_ label: String) {
             let trimmed = String(label.prefix(18)).trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed == currentBulbLabel && (trimmed.isEmpty ? logoNode == nil : logoNode != nil) { return }
+            guard trimmed != currentBulbLabel || logoNodes.isEmpty != trimmed.isEmpty else { return }
             currentBulbLabel = trimmed
-            guard !trimmed.isEmpty else {
-                logoNode?.removeFromParentNode()
-                logoNode = nil
-                return
-            }
+            logoNodes.forEach { $0.removeFromParentNode() }
+            logoNodes.removeAll()
+            guard !trimmed.isEmpty else { return }
 
-            let logo = SCNText(string: trimmed, extrusionDepth: 0.004)
-            logo.font = NSFont(name: "Philips Sans", size: 0.15)
-                ?? NSFont.systemFont(ofSize: 0.15, weight: .bold)
-            logo.flatness = 0.005
-            let material = SCNMaterial()
-            material.lightingModel = .constant
-            material.diffuse.contents = NSColor(white: 0.27, alpha: 1)
-            material.emission.contents = NSColor(white: 0.27, alpha: 1)
-            material.isDoubleSided = true
-            logo.materials = [material]
-
-            if logoNode == nil {
-                logoNode = SCNNode()
-                pivotNode.addChildNode(logoNode!)
+            // Lay out one glyph at a time along the diffuser's curved front surface.
+            // This keeps the branding on the body instead of letting the globe occlude it.
+            let fontSize: CGFloat = 0.14
+            let font = NSFont(name: "Philips Sans", size: fontSize)
+                ?? NSFont.systemFont(ofSize: fontSize, weight: .bold)
+            let glyphs = trimmed.map { character -> (SCNText, CGFloat) in
+                let geometry = SCNText(string: String(character), extrusionDepth: 0.003)
+                geometry.font = font
+                geometry.flatness = 0.003
+                let (minBound, maxBound) = geometry.boundingBox
+                return (geometry, max(maxBound.x - minBound.x, 0.001))
             }
-            logoNode?.geometry = logo
-            let (minBound, maxBound) = logo.boundingBox
-            let width = maxBound.x - minBound.x
-            let scale: CGFloat = min(1, 0.90 / max(width, 0.001))
-            logoNode?.scale = SCNVector3(scale, scale, scale)
-            logoNode?.position = SCNVector3(-width * scale / 2, -0.30, 0.735)
+            let spacing: CGFloat = 0.018
+            let rawWidth = glyphs.reduce(0) { $0 + $1.1 } + spacing * CGFloat(max(glyphs.count - 1, 0))
+            let scale = min(1, 0.78 / max(rawWidth, 0.001))
+            let totalWidth = rawWidth * scale
+            let bodyY: CGFloat = -0.37
+            let bodyRadius: CGFloat = 0.682
+            var cursor = -totalWidth / 2
+
+            for (geometry, rawGlyphWidth) in glyphs {
+                let glyphWidth = rawGlyphWidth * scale
+                let centerArc = cursor + glyphWidth / 2
+                let angle = centerArc / bodyRadius
+                let glyphNode = SCNNode()
+                glyphNode.position = SCNVector3(bodyRadius * sin(angle), bodyY, bodyRadius * cos(angle) + 0.009)
+                glyphNode.eulerAngles.y = angle
+                glyphNode.scale = SCNVector3(scale, scale, scale)
+
+                let material = SCNMaterial()
+                material.lightingModel = .constant
+                material.diffuse.contents = NSColor(white: 0.27, alpha: 1)
+                material.emission.contents = NSColor(white: 0.27, alpha: 1)
+                material.readsFromDepthBuffer = false
+                material.writesToDepthBuffer = false
+                geometry.materials = [material]
+
+                let glyph = SCNNode(geometry: geometry)
+                glyph.position = SCNVector3(-rawGlyphWidth / 2, -fontSize * 0.32, 0)
+                glyphNode.addChildNode(glyph)
+                pivotNode.addChildNode(glyphNode)
+                logoNodes.append(glyphNode)
+                cursor += (rawGlyphWidth + spacing) * scale
+            }
         }
 
         private func buildBulb(in root: SCNNode) {
@@ -204,7 +225,7 @@ public struct Bulb3DView: NSViewRepresentable {
             bodyGeo.materials = [bodyMaterial]
             root.addChildNode(SCNNode(geometry: bodyGeo))
 
-            updateBulbLabel(currentBulbLabel.isEmpty ? "PHILIPS" : currentBulbLabel)
+            if currentBulbLabel.isEmpty { updateBulbLabel("PHILIPS") }
 
             // 3. Rose gold band that follows the body curve
             var bandProfile: [CGPoint] = []
