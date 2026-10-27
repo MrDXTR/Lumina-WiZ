@@ -4,6 +4,7 @@ import Combine
 public final class ColorWheelViewModel: ObservableObject {
     @Published public var knobPosition: CGPoint = .zero
     @Published public var isDragging: Bool = false
+    @Published public var hexText: String = ""
 
     public init() {}
 }

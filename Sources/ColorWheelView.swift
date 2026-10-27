@@ -5,9 +5,9 @@ public struct ColorWheelView: View {
     @Binding var selectedColor: NSColor
     let onColorChanged: (NSColor) -> Void
 
-    @ObservedObject private var vm: ColorWheelViewModel
+    @StateObject private var vm: ColorWheelViewModel
 
-    private let wheelDiameter: CGFloat = 170.0
+    private let wheelDiameter: CGFloat = 148.0
     private var radius: CGFloat { wheelDiameter / 2.0 }
 
     // Quick presets
@@ -25,11 +25,11 @@ public struct ColorWheelView: View {
     public init(selectedColor: Binding<NSColor>, onColorChanged: @escaping (NSColor) -> Void) {
         self._selectedColor = selectedColor
         self.onColorChanged = onColorChanged
-        self.vm = ColorWheelViewModel()
+        self._vm = StateObject(wrappedValue: ColorWheelViewModel())
     }
 
     public var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 8) {
             // The Radial Color Wheel
             ZStack {
                 // Hue Angular Gradient
@@ -97,11 +97,13 @@ public struct ColorWheelView: View {
             )
             .onAppear {
                 syncKnobFromColor(selectedColor)
+                vm.hexText = selectedColor.hexString
             }
             .onChange(of: selectedColor) { newColor in
                 if !vm.isDragging {
                     syncKnobFromColor(newColor)
                 }
+                vm.hexText = newColor.hexString
             }
 
             // Color Presets Bar
@@ -126,7 +128,27 @@ public struct ColorWheelView: View {
                 }
             }
             .padding(.top, 2)
+
+            HStack(spacing: 7) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color(selectedColor))
+                    .frame(width: 18, height: 18)
+                TextField("#RRGGBB", text: $vm.hexText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11, design: .monospaced))
+                    .onSubmit(applyHexColor)
+                Button("Apply", action: applyHexColor)
+                    .controlSize(.small)
+            }
         }
+    }
+
+    private func applyHexColor() {
+        guard let color = NSColor(hex: vm.hexText) else { return }
+        selectedColor = color
+        syncKnobFromColor(color)
+        onColorChanged(color)
+        vm.hexText = color.hexString
     }
 
     // MARK: - Color Math
@@ -169,5 +191,21 @@ public struct ColorWheelView: View {
             x: CGFloat(dist * cos(angle)),
             y: CGFloat(dist * sin(angle))
         )
+    }
+}
+
+private extension NSColor {
+    convenience init?(hex: String) {
+        var value = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.hasPrefix("#") { value.removeFirst() }
+        guard value.count == 6, let rgb = UInt32(value, radix: 16) else { return nil }
+        self.init(srgbRed: CGFloat((rgb >> 16) & 0xff) / 255,
+                  green: CGFloat((rgb >> 8) & 0xff) / 255,
+                  blue: CGFloat(rgb & 0xff) / 255, alpha: 1)
+    }
+
+    var hexString: String {
+        guard let rgb = usingColorSpace(.deviceRGB) else { return "#FFFFFF" }
+        return String(format: "#%02X%02X%02X", Int(rgb.redComponent * 255), Int(rgb.greenComponent * 255), Int(rgb.blueComponent * 255))
     }
 }

@@ -81,7 +81,7 @@ public struct Bulb3DView: NSViewRepresentable {
         root.addChildNode(bulbAssembly)
 
         // 1. Frosted Glass Dome
-        let glassGeometry = SCNSphere(radius: 0.95)
+        let glassGeometry = SCNSphere(radius: 0.78)
         glassGeometry.segmentCount = 64
         let glassMaterial = SCNMaterial()
         glassMaterial.lightingModel = .physicallyBased
@@ -92,13 +92,14 @@ public struct Bulb3DView: NSViewRepresentable {
         glassGeometry.materials = [glassMaterial]
 
         let glassNode = SCNNode(geometry: glassGeometry)
-        glassNode.position = SCNVector3(0, 0.45, 0)
+        glassNode.position = SCNVector3(0, 0.58, 0)
+        glassNode.scale = SCNVector3(1, 0.92, 1)
         glassNode.name = "glassNode"
         bulbAssembly.addChildNode(glassNode)
         coordinator.glassNode = glassNode
 
         // 2. Bulb Taper/Neck (connecting globe to base)
-        let neckGeometry = SCNCone(topRadius: 0.85, bottomRadius: 0.48, height: 0.6)
+        let neckGeometry = SCNCone(topRadius: 0.68, bottomRadius: 0.34, height: 0.92)
         neckGeometry.radialSegmentCount = 48
         let neckMaterial = SCNMaterial()
         neckMaterial.lightingModel = .physicallyBased
@@ -106,7 +107,7 @@ public struct Bulb3DView: NSViewRepresentable {
         neckGeometry.materials = [neckMaterial]
 
         let neckNode = SCNNode(geometry: neckGeometry)
-        neckNode.position = SCNVector3(0, -0.05, 0)
+        neckNode.position = SCNVector3(0, -0.36, 0)
         neckNode.name = "neckNode"
         bulbAssembly.addChildNode(neckNode)
         coordinator.neckNode = neckNode
@@ -120,7 +121,7 @@ public struct Bulb3DView: NSViewRepresentable {
         filamentGeometry.materials = [filamentMat]
 
         let filamentNode = SCNNode(geometry: filamentGeometry)
-        filamentNode.position = SCNVector3(0, 0.45, 0)
+        filamentNode.position = SCNVector3(0, 0.58, 0)
         filamentNode.rotation = SCNVector4(1, 0, 0, Float.pi / 2.3)
         filamentNode.name = "filamentNode"
         bulbAssembly.addChildNode(filamentNode)
@@ -130,14 +131,14 @@ public struct Bulb3DView: NSViewRepresentable {
         let innerLightNode = SCNNode()
         innerLightNode.light = SCNLight()
         innerLightNode.light?.type = .omni
-        innerLightNode.position = SCNVector3(0, 0.45, 0)
+        innerLightNode.position = SCNVector3(0, 0.58, 0)
         innerLightNode.name = "innerLight"
         bulbAssembly.addChildNode(innerLightNode)
         coordinator.innerLightNode = innerLightNode
 
         // 5. Metallic Screw Base (E27 Collar)
         let baseHeight: CGFloat = 0.55
-        let baseGeometry = SCNCylinder(radius: 0.46, height: baseHeight)
+        let baseGeometry = SCNCylinder(radius: 0.36, height: baseHeight)
         baseGeometry.radialSegmentCount = 48
         let metalMaterial = SCNMaterial()
         metalMaterial.lightingModel = .physicallyBased
@@ -147,15 +148,15 @@ public struct Bulb3DView: NSViewRepresentable {
         baseGeometry.materials = [metalMaterial]
 
         let baseNode = SCNNode(geometry: baseGeometry)
-        baseNode.position = SCNVector3(0, -0.6, 0)
+        baseNode.position = SCNVector3(0, -0.98, 0)
         bulbAssembly.addChildNode(baseNode)
 
         // 6. Screw Thread Rings
         for i in 0..<3 {
-            let threadTorus = SCNTorus(ringRadius: 0.47, pipeRadius: 0.025)
+            let threadTorus = SCNTorus(ringRadius: 0.37, pipeRadius: 0.025)
             threadTorus.materials = [metalMaterial]
             let threadNode = SCNNode(geometry: threadTorus)
-            threadNode.position = SCNVector3(0, -0.48 - (Double(i) * 0.12), 0)
+            threadNode.position = SCNVector3(0, -0.82 - (Double(i) * 0.12), 0)
             bulbAssembly.addChildNode(threadNode)
         }
 
@@ -166,7 +167,7 @@ public struct Bulb3DView: NSViewRepresentable {
         blackMaterial.roughness.contents = 0.6
         insulatorGeometry.materials = [blackMaterial]
         let insulatorNode = SCNNode(geometry: insulatorGeometry)
-        insulatorNode.position = SCNVector3(0, -0.92, 0)
+        insulatorNode.position = SCNVector3(0, -1.30, 0)
         bulbAssembly.addChildNode(insulatorNode)
 
         let contactGeometry = SCNSphere(radius: 0.18)
@@ -176,7 +177,7 @@ public struct Bulb3DView: NSViewRepresentable {
         copperMaterial.diffuse.contents = NSColor(red: 0.78, green: 0.52, blue: 0.35, alpha: 1.0)
         contactGeometry.materials = [copperMaterial]
         let contactNode = SCNNode(geometry: contactGeometry)
-        contactNode.position = SCNVector3(0, -0.99, 0)
+        contactNode.position = SCNVector3(0, -1.38, 0)
         contactNode.scale = SCNVector3(1, 0.4, 1)
         bulbAssembly.addChildNode(contactNode)
     }

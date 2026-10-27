@@ -12,8 +12,8 @@ public struct MainView: View {
             // Header Bar
             headerSection
                 .padding(.horizontal, 16)
-                .padding(.top, 16)
-                .padding(.bottom, 10)
+                .padding(.top, 12)
+                .padding(.bottom, 6)
 
             // 3D Bulb View (Interactive live render)
             ZStack {
@@ -27,7 +27,7 @@ public struct MainView: View {
                 }
 
                 Bulb3DView(isOn: wiz.isOn, color: wiz.color, brightness: wiz.brightness)
-                    .frame(height: 175)
+                    .frame(height: 135)
             }
             .padding(.bottom, 6)
 
@@ -39,7 +39,7 @@ public struct MainView: View {
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 20)
-            .padding(.bottom, 14)
+            .padding(.bottom, 8)
             .disabled(!wiz.isOn)
 
             // Mode Content View
@@ -49,15 +49,15 @@ public struct MainView: View {
                     ColorWheelView(selectedColor: $wiz.color) { newColor in
                         wiz.setColor(newColor)
                     }
-                    .frame(height: 215)
+                    .frame(height: 205)
 
                 case .temperature:
                     temperatureControlView
-                        .frame(height: 215)
+                        .frame(height: 205)
 
                 case .scenes:
                     scenesGridView
-                        .frame(height: 215)
+                        .frame(height: 205)
                 }
             }
             .padding(.horizontal, 18)
@@ -65,13 +65,13 @@ public struct MainView: View {
             .opacity(wiz.isOn ? 1.0 : 0.4)
 
             Divider()
-                .padding(.vertical, 12)
+                .padding(.vertical, 7)
                 .padding(.horizontal, 16)
 
             // Brightness Slider
             brightnessSection
                 .padding(.horizontal, 20)
-                .padding(.bottom, 12)
+                .padding(.bottom, 7)
                 .disabled(!wiz.isOn)
                 .opacity(wiz.isOn ? 1.0 : 0.4)
 
@@ -88,18 +88,19 @@ public struct MainView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 8)
+                .padding(.bottom, 5)
             }
 
             // Footer Action Bar
             footerSection
                 .padding(.horizontal, 16)
-                .padding(.bottom, 14)
-                .padding(.top, 4)
+                .padding(.bottom, 10)
+                .padding(.top, 2)
         }
-        .frame(width: 330)
+        .frame(width: 330, height: 490)
         .background(
             VisualEffectView(material: .popover, blendingMode: .behindWindow)
+                .overlay(Color.white.opacity(0.035))
         )
     }
 
