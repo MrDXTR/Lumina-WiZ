@@ -4,20 +4,17 @@ A small, native macOS menu bar controller for WiZ smart bulbs. Lumina talks dire
 
 ## Screenshots
 
-| Color controls | Scenes and color flows |
+| Color controls | Scenes and alarms |
 | --- | --- |
-| ![Lumina color controls](public/SS1.png) | ![Lumina scenes and color flows](public/SS2.png) |
+| ![Lumina color controls](public/SS1.png) | ![Lumina scenes and alarms](public/SS2.png) |
 
 ## Features
 
 - Turn the bulb on or off from the menu bar popover. Right-click or Option-click the menu bar icon to toggle power quickly.
-- Adjust brightness, choose a color from the wheel, enter a custom hex color, or set white color temperature.
-- Use the bulb preview to see color and brightness changes. Its label can be customized in **Settings**.
-- Choose built-in WiZ scenes or start a cycling color flow, including Diwali, Aurora, Sunset, and Ocean palettes.
-- Set the bulb's IP address in Settings or use **Rescan IP** to look for it on your local network.
-- Scheduled alarms and wake-up routines with firmware pulse effects or custom color strobe loops.
-- Rock-solid `.applicationDefined` popover behavior with outside-click and Escape key monitors.
-- Cached menu bar rendering to minimize CPU overhead.
+- Adjust brightness, choose a color from the wheel, save up to 5 favorite colors, enter custom hex, or set white color temperature with a tactile glide slider.
+- Built-in WiZ standalone scenes (Diwali, Ocean, Sunset, Party, Fireplace, etc.) with real-time dynamic animation speed controls.
+- Scheduled alarms and wake-up lighting with customizable actions (WiZ Hardware Alarm effect, Flashing Strobe, or Designated Color) and in-place alarm editing.
+- Native Apple Liquid Glass aesthetic and popover interface with fluid spring motion.
 
 ## Requirements
 
@@ -45,9 +42,12 @@ Full Xcode is not required to build the app when the Command Line Tools and macO
 # Install to /Applications
 ./build.sh --install
 
-# Package a compressed distributable DMG
+# Package a compressed DMG installer for local installation
 ./Tools/make-dmg.sh
 ```
+
+> [!NOTE]
+> The packaged disk image is ad-hoc signed for local and manual installation (not Apple-notarized). On first launch on a new Mac, macOS Gatekeeper may request approval. You can launch it by **Right-Clicking > Open**, or via **System Settings > Privacy & Security > Open Anyway**.
 
 ## Connect to a Bulb
 

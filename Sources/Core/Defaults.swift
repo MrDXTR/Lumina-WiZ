@@ -6,7 +6,7 @@ public enum DefaultsKey {
     public static let bulbLabel = "WizBulbLabel"
     public static let dynamicSpeed = "WizDynamicSpeed"
     public static let favoriteColors = "LuminaFavoriteColors"
-    public static let alarms = "LuminaBulbAlarms"
+    public static let alarms = "LuminaSavedAlarms"
     public static let defaultBrightness = "WizDefaultBrightness"
     public static let defaultTemperature = "WizDefaultTemperature"
 }

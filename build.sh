@@ -27,7 +27,7 @@ for arg in "$@"; do
         --help|-h)
             echo "Usage: ./build.sh [OPTIONS]"
             echo "Options:"
-            echo "  --dev       Build 'Lumina (Developer)' variant (com.lumina.wiz.dev)"
+            echo "  --dev       Build 'Lumina (Developer)' variant (com.dxtr.lumina.dev)"
             echo "  --install   Install application to /Applications"
             echo "  --test      Compile and run standalone unit tests"
             echo "  --selftest  Run headless self-test verification"
@@ -38,12 +38,12 @@ done
 
 if (( DEV )); then
     APP_NAME="Lumina (Developer)"
-    BUNDLE_ID="com.lumina.wiz.dev"
+    BUNDLE_ID="com.dxtr.lumina.dev"
     BUILD_OPT="-Onone"
     echo "==> Building Developer Variant: $APP_NAME ($BUNDLE_ID)..."
 else
     APP_NAME="Lumina"
-    BUNDLE_ID="com.lumina.wiz"
+    BUNDLE_ID="com.dxtr.lumina"
     BUILD_OPT="-O"
     echo "==> Building Production Release: $APP_NAME ($BUNDLE_ID)..."
 fi

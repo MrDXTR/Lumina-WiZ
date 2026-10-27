@@ -42,7 +42,9 @@ public final class ScheduleManager: ObservableObject {
     // MARK: - Alarm Persistence
 
     private func loadAlarms() {
-        if let data = UserDefaults.standard.data(forKey: DefaultsKey.alarms),
+        let storedData = UserDefaults.standard.data(forKey: DefaultsKey.alarms)
+            ?? UserDefaults.standard.data(forKey: "LuminaBulbAlarms")
+        if let data = storedData,
            let decoded = try? JSONDecoder().decode([BulbAlarm].self, from: data) {
             self.alarms = decoded
         } else {
@@ -144,7 +146,7 @@ public final class ScheduleManager: ObservableObject {
         case .hardwareAlarm:
             // Scene 35 is WiZ native Alarm scene; runs firmware-level pulsing
             WizService.shared.setBrightness(alarm.designatedBrightness)
-            WizService.shared.setSceneIdDirect(35, speed: 100)
+            WizService.shared.setSceneIdDirect(35, speed: 100, brightness: alarm.designatedBrightness)
 
         case .customPulse:
             // Rapid flashing loop for 30s

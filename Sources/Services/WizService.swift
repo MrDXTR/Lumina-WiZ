@@ -175,13 +175,15 @@ public final class WizService: ObservableObject {
         let r = Int(round(rgb.redComponent * 255))
         let g = Int(round(rgb.greenComponent * 255))
         let b = Int(round(rgb.blueComponent * 255))
+        let dimming = Int(self.brightness)
 
         debouncePilotCommand {
             [
                 "state": true,
                 "r": r,
                 "g": g,
-                "b": b
+                "b": b,
+                "dimming": dimming
             ]
         }
     }
@@ -225,7 +227,7 @@ public final class WizService: ObservableObject {
         sendPilotCommand(params)
     }
 
-    public func setSceneIdDirect(_ sceneId: Int, speed: Int? = nil) {
+    public func setSceneIdDirect(_ sceneId: Int, speed: Int? = nil, brightness: Double? = nil) {
         noteVisualChange()
         noteLocalControl()
         self.activeSceneId = sceneId
@@ -237,6 +239,9 @@ public final class WizService: ObservableObject {
         ]
         if let speed = speed {
             params["speed"] = speed
+        }
+        if let brightness = brightness {
+            params["dimming"] = Int(max(10.0, min(100.0, brightness)))
         }
 
         debounceWorkItem?.cancel()

@@ -5,7 +5,7 @@
     <key>CFBundleExecutable</key>
     <string>Lumina</string>
     <key>CFBundleIdentifier</key>
-    <string>com.lumina.wiz</string>
+    <string>com.dxtr.lumina</string>
     <key>CFBundleName</key>
     <string>Lumina</string>
     <key>CFBundlePackageType</key>

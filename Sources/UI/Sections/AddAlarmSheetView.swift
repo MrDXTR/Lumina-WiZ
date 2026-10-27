@@ -18,16 +18,14 @@ public struct AddAlarmSheetView: View {
                 Button(vm.editingAlarmId == nil ? "Add" : "Save") {
                     let comps = Calendar.current.dateComponents([.hour, .minute], from: vm.newAlarmTime)
                     let id = vm.editingAlarmId ?? UUID()
-                    let alarm = BulbAlarm(
-                        id: id,
-                        isEnabled: true,
-                        hour: comps.hour ?? 9,
-                        minute: comps.minute ?? 0,
-                        repeatOption: vm.newAlarmRepeat,
-                        mode: vm.newAlarmMode,
-                        designatedBrightness: vm.newAlarmBrightness,
-                        durationSeconds: 30
-                    )
+                    var alarm = schedule.alarms.first(where: { $0.id == id })
+                        ?? BulbAlarm(id: id, durationSeconds: 30)
+                    alarm.isEnabled = true
+                    alarm.hour = comps.hour ?? 9
+                    alarm.minute = comps.minute ?? 0
+                    alarm.repeatOption = vm.newAlarmRepeat
+                    alarm.mode = vm.newAlarmMode
+                    alarm.designatedBrightness = vm.newAlarmBrightness
                     schedule.updateAlarm(alarm)
                     vm.showingAlarmSheet = false
                 }

@@ -17,10 +17,8 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 1' INT TERM HUP
 
-if [[ ! -d "$APP" ]]; then
-    echo "==> $APP not found, building first..."
-    ./build.sh
-fi
+echo "==> Building fresh production application bundle..."
+./build.sh
 
 VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP/Contents/Info.plist" 2>/dev/null || echo "1.0")
 DMG_PATH="$DIST_DIR/Lumina-$VERSION.dmg"

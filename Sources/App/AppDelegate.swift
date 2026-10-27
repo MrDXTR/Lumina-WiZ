@@ -3,19 +3,17 @@ import SwiftUI
 import Combine
 
 public final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
-    private var statusController: StatusItemController!
+    private let statusController = StatusItemController()
     private var popover: NSPopover!
+    private var eventMonitor: Any?
+    private var localEventMonitor: Any?
     private var cancellables = Set<AnyCancellable>()
 
-    private var globalDismissMonitor: Any?
-    private var localKeyMonitor: Any?
-
     public func applicationDidFinishLaunching(_ notification: Notification) {
-        // Register default values
+        // Register default values into UserDefaults
         Defaults.register()
 
-        // Initialize status bar controller
-        statusController = StatusItemController()
+        // Setup status item controller
         statusController.onLeftClick = { [weak self] in
             self?.togglePopover()
         }
@@ -23,10 +21,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelega
             WizService.shared.togglePower()
         }
 
-        // Initialize ScheduleManager
+        // Initialize background schedule evaluator
         _ = ScheduleManager.shared
 
-        // Setup Popover with .applicationDefined behavior to prevent accidental closes on sheet interactions
+        // Setup Popover
         let popover = NSPopover()
         popover.contentSize = NSSize(width: 330, height: 515)
         popover.behavior = .applicationDefined
@@ -46,10 +44,18 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelega
                     brightness: brightness,
                     isAlarmTriggered: isAlarm
                 )
+            }
+            .store(in: &cancellables)
 
-                if isAlarm, let self = self, !self.popover.isShown, let button = self.statusController.button {
-                    self.showPopover(anchor: button)
-                }
+        // Show popover strictly when an alarm transitions to triggered (rising edge)
+        ScheduleManager.shared.$isAlarmTriggered
+            .removeDuplicates()
+            .filter { $0 }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self = self, !self.popover.isShown,
+                      let button = self.statusController.button else { return }
+                self.showPopover(anchor: button)
             }
             .store(in: &cancellables)
 
@@ -79,42 +85,37 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelega
     }
 
     private func closePopover() {
-        popover.performClose(nil)
+        if popover.isShown {
+            popover.performClose(nil)
+        }
     }
 
     private func installDismissMonitors() {
-        removeDismissMonitors()
-
-        // Global monitor for clicks outside the application window
-        globalDismissMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: [.leftMouseDown, .rightMouseDown]
-        ) { [weak self] _ in
-            guard let self = self, self.popover.isShown else { return }
-            let mouseLocation = NSEvent.mouseLocation
-            // If the click is on the status item itself, let the button handler toggle it
-            guard !self.statusController.contains(point: mouseLocation) else { return }
-            self.closePopover()
+        // Global monitor catches clicks outside the application windows
+        eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            self?.closePopover()
         }
 
-        // Local monitor for Escape key
-        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        // Local monitor catches clicks in other parts of our app
+        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             guard let self = self, self.popover.isShown else { return event }
-            if event.keyCode == 53 { // ESC key
+            if let popoverWindow = self.popover.contentViewController?.view.window,
+               event.window != popoverWindow,
+               event.window != self.statusController.button?.window {
                 self.closePopover()
-                return nil
             }
             return event
         }
     }
 
     private func removeDismissMonitors() {
-        if let monitor = globalDismissMonitor {
+        if let monitor = eventMonitor {
             NSEvent.removeMonitor(monitor)
-            globalDismissMonitor = nil
+            eventMonitor = nil
         }
-        if let monitor = localKeyMonitor {
-            NSEvent.removeMonitor(monitor)
-            localKeyMonitor = nil
+        if let localMonitor = localEventMonitor {
+            NSEvent.removeMonitor(localMonitor)
+            localEventMonitor = nil
         }
     }
 }
