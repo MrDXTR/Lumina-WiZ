@@ -6,7 +6,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelega
     private let statusController = StatusItemController()
     private var popover: NSPopover!
     private var eventMonitor: Any?
-    private var localEventMonitor: Any?
     private var cancellables = Set<AnyCancellable>()
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
@@ -59,7 +58,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelega
             }
             .store(in: &cancellables)
 
-        // Install event monitors to dismiss .applicationDefined popover when clicking outside
+        // Install event monitor to dismiss popover when clicking outside the application
         installDismissMonitors()
     }
 
@@ -87,6 +86,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelega
     private func closePopover() {
         if popover.isShown {
             popover.performClose(nil)
+            MainViewModel.shared.showingAlarmSheet = false
+            MainViewModel.shared.showingSettings = false
         }
     }
 
@@ -95,27 +96,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelega
         eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             self?.closePopover()
         }
-
-        // Local monitor catches clicks in other parts of our app
-        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-            guard let self = self, self.popover.isShown else { return event }
-            if let popoverWindow = self.popover.contentViewController?.view.window,
-               event.window != popoverWindow,
-               event.window != self.statusController.button?.window {
-                self.closePopover()
-            }
-            return event
-        }
     }
 
     private func removeDismissMonitors() {
         if let monitor = eventMonitor {
             NSEvent.removeMonitor(monitor)
             eventMonitor = nil
-        }
-        if let localMonitor = localEventMonitor {
-            NSEvent.removeMonitor(localMonitor)
-            localEventMonitor = nil
         }
     }
 }

@@ -47,6 +47,8 @@ public final class ColorWheelViewModel: ObservableObject {
 }
 
 public final class MainViewModel: ObservableObject {
+    public static let shared = MainViewModel()
+
     @Published public var showingSettings: Bool = false
     @Published public var showingAlarmSheet: Bool = false
     @Published public var customIP: String = ""

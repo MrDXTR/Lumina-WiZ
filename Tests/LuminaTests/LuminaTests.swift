@@ -45,6 +45,7 @@ public enum LuminaTests {
         testKelvinToColorWarmth()
         testAlarmScheduleTriggering()
         testBulbAlarmCodable()
+        testAlarmAddAndEditWorkflow()
 
         print("==> Test Results: \(passedTests)/\(totalTests) passed (\(failedTests) failed).")
         return failedTests == 0
@@ -159,5 +160,41 @@ public enum LuminaTests {
         } catch {
             assertTrue(false, "Encoding error: \(error)")
         }
+    }
+
+    private static func testAlarmAddAndEditWorkflow() {
+        let mgr = ScheduleManager.shared
+        let initialCount = mgr.alarms.count
+
+        let testId = UUID()
+        let newAlarm = BulbAlarm(
+            id: testId,
+            isEnabled: true,
+            hour: 14,
+            minute: 15,
+            repeatOption: .weekdays,
+            mode: .hardwareAlarm,
+            designatedBrightness: 80.0,
+            durationSeconds: 30
+        )
+        mgr.updateAlarm(newAlarm)
+        assertEqual(mgr.alarms.count, initialCount + 1, "Alarm count increments on new add")
+
+        // Edit the alarm
+        var editedAlarm = newAlarm
+        editedAlarm.hour = 15
+        editedAlarm.minute = 30
+        editedAlarm.designatedBrightness = 50.0
+        mgr.updateAlarm(editedAlarm)
+
+        assertEqual(mgr.alarms.count, initialCount + 1, "Alarm count unchanged on edit")
+        let found = mgr.alarms.first(where: { $0.id == testId })
+        assertEqual(found?.hour, 15, "Edited hour matches")
+        assertEqual(found?.minute, 30, "Edited minute matches")
+        assertEqual(found?.designatedBrightness, 50.0, "Edited brightness matches")
+
+        // Clean up
+        mgr.deleteAlarm(id: testId)
+        assertEqual(mgr.alarms.count, initialCount, "Alarm cleaned up successfully")
     }
 }

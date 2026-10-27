@@ -3,7 +3,7 @@ import AppKit
 
 public struct MainView: View {
     @ObservedObject var wiz = WizService.shared
-    @ObservedObject var vm = MainViewModel()
+    @ObservedObject var vm = MainViewModel.shared
     @ObservedObject var schedule = ScheduleManager.shared
 
     public init() {}
@@ -33,7 +33,6 @@ public struct MainView: View {
             TabBarSection(wiz: wiz)
                 .padding(.horizontal, 18)
                 .padding(.bottom, 8)
-                .disabled(!wiz.isOn && wiz.activeMode != .alarms)
 
             // Mode Content View
             Group {
@@ -43,14 +42,20 @@ public struct MainView: View {
                         wiz.setColor(newColor)
                     }
                     .frame(height: 220)
+                    .disabled(!wiz.isOn)
+                    .opacity(wiz.isOn ? 1.0 : 0.4)
 
                 case .temperature:
                     TemperatureSection(wiz: wiz, vm: vm)
                         .frame(height: 220)
+                    .disabled(!wiz.isOn)
+                    .opacity(wiz.isOn ? 1.0 : 0.4)
 
                 case .scenes:
                     ScenesSection(wiz: wiz)
                         .frame(height: 220)
+                    .disabled(!wiz.isOn)
+                    .opacity(wiz.isOn ? 1.0 : 0.4)
 
                 case .alarms:
                     AlarmsSection(schedule: schedule, vm: vm)
@@ -58,8 +63,6 @@ public struct MainView: View {
                 }
             }
             .padding(.horizontal, 18)
-            .disabled(!wiz.isOn && wiz.activeMode != .alarms)
-            .opacity((wiz.isOn || wiz.activeMode == .alarms) ? 1.0 : 0.4)
 
             Divider()
                 .padding(.vertical, 6)
@@ -99,9 +102,6 @@ public struct MainView: View {
             VisualEffectView(material: .popover, blendingMode: .behindWindow)
                 .overlay(Color.white.opacity(0.035))
         )
-        .sheet(isPresented: $vm.showingAlarmSheet) {
-            AddAlarmSheetView(schedule: schedule, vm: vm)
-        }
     }
 }
 

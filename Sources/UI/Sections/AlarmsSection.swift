@@ -10,6 +10,22 @@ public struct AlarmsSection: View {
     }
 
     public var body: some View {
+        Group {
+            if vm.showingAlarmSheet {
+                AddAlarmSheetView(schedule: schedule, vm: vm)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.97)),
+                        removal: .opacity.combined(with: .scale(scale: 0.97))
+                    ))
+            } else {
+                alarmsListView
+                    .transition(.opacity)
+            }
+        }
+        .frame(height: 220)
+    }
+
+    private var alarmsListView: some View {
         VStack(spacing: 8) {
             HStack {
                 Text("SCHEDULED ALARMS")
@@ -19,7 +35,9 @@ public struct AlarmsSection: View {
                 Spacer()
 
                 Button {
-                    vm.startNewAlarm()
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                        vm.startNewAlarm()
+                    }
                 } label: {
                     HStack(spacing: 3) {
                         Image(systemName: "plus")
@@ -105,7 +123,9 @@ public struct AlarmsSection: View {
 
             // Edit Button
             Button {
-                vm.startEditingAlarm(alarm)
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                    vm.startEditingAlarm(alarm)
+                }
             } label: {
                 Image(systemName: "pencil")
                     .font(.system(size: 11))

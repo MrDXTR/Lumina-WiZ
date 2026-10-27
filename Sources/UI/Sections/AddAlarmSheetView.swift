@@ -10,73 +10,112 @@ public struct AddAlarmSheetView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text(vm.editingAlarmId == nil ? "New Alarm / Schedule" : "Edit Alarm / Schedule")
-                    .font(.system(size: 14, weight: .semibold))
-                Spacer()
-                Button(vm.editingAlarmId == nil ? "Add" : "Save") {
-                    let comps = Calendar.current.dateComponents([.hour, .minute], from: vm.newAlarmTime)
-                    let id = vm.editingAlarmId ?? UUID()
-                    var alarm = schedule.alarms.first(where: { $0.id == id })
-                        ?? BulbAlarm(id: id, durationSeconds: 30)
-                    alarm.isEnabled = true
-                    alarm.hour = comps.hour ?? 9
-                    alarm.minute = comps.minute ?? 0
-                    alarm.repeatOption = vm.newAlarmRepeat
-                    alarm.mode = vm.newAlarmMode
-                    alarm.designatedBrightness = vm.newAlarmBrightness
-                    schedule.updateAlarm(alarm)
-                    vm.showingAlarmSheet = false
-                }
-                .controlSize(.small)
-            }
-
-            // Time Picker
-            DatePicker("Time", selection: $vm.newAlarmTime, displayedComponents: .hourAndMinute)
-                .datePickerStyle(.stepperField)
-
-            // Repeat Picker
-            Picker("Repeat", selection: $vm.newAlarmRepeat) {
-                ForEach(AlarmRepeat.allCases) { opt in
-                    Text(opt.rawValue).tag(opt)
-                }
-            }
-
-            // Alarm Action
-            Picker("Action", selection: $vm.newAlarmMode) {
-                ForEach(AlarmMode.allCases) { mode in
-                    Text(mode.rawValue).tag(mode)
-                }
-            }
-
-            Text(vm.newAlarmMode.summary)
-                .font(.system(size: 10))
-                .foregroundColor(.secondary)
-
-            // Brightness
-            if vm.newAlarmMode != .turnOff {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("Target Brightness")
-                            .font(.system(size: 11))
-                        Spacer()
-                        Text("\(Int(vm.newAlarmBrightness))%")
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    }
-                    Slider(value: $vm.newAlarmBrightness, in: 10...100, step: 5)
-                }
-            }
-
+        VStack(spacing: 10) {
+            // Header with Cancel and Save
             HStack {
                 Button("Cancel") {
-                    vm.showingAlarmSheet = false
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                        vm.showingAlarmSheet = false
+                    }
                 }
-                .controlSize(.small)
+                .buttonStyle(.plain)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+
                 Spacer()
+
+                Text(vm.editingAlarmId == nil ? "New Alarm" : "Edit Alarm")
+                    .font(.system(size: 12, weight: .semibold))
+
+                Spacer()
+
+                Button(vm.editingAlarmId == nil ? "Add" : "Save") {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                        let comps = Calendar.current.dateComponents([.hour, .minute], from: vm.newAlarmTime)
+                        let id = vm.editingAlarmId ?? UUID()
+                        var alarm = schedule.alarms.first(where: { $0.id == id })
+                            ?? BulbAlarm(id: id, durationSeconds: 30)
+                        alarm.isEnabled = true
+                        alarm.hour = comps.hour ?? 9
+                        alarm.minute = comps.minute ?? 0
+                        alarm.repeatOption = vm.newAlarmRepeat
+                        alarm.mode = vm.newAlarmMode
+                        alarm.designatedBrightness = vm.newAlarmBrightness
+                        schedule.updateAlarm(alarm)
+                        vm.showingAlarmSheet = false
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.mini)
             }
+            .padding(.bottom, 2)
+
+            // Content Form inside a sleek glass card
+            VStack(spacing: 8) {
+                // Time Row
+                HStack {
+                    Text("Time")
+                        .font(.system(size: 11, weight: .medium))
+                    Spacer()
+                    DatePicker("", selection: $vm.newAlarmTime, displayedComponents: .hourAndMinute)
+                        .datePickerStyle(.stepperField)
+                        .labelsHidden()
+                }
+
+                Divider().opacity(0.4)
+
+                // Repeat Row
+                HStack {
+                    Text("Repeat")
+                        .font(.system(size: 11, weight: .medium))
+                    Spacer()
+                    Picker("", selection: $vm.newAlarmRepeat) {
+                        ForEach(AlarmRepeat.allCases) { opt in
+                            Text(opt.rawValue).tag(opt)
+                        }
+                    }
+                    .labelsHidden()
+                    .controlSize(.small)
+                    .frame(width: 120)
+                }
+
+                Divider().opacity(0.4)
+
+                // Action Row
+                HStack {
+                    Text("Action")
+                        .font(.system(size: 11, weight: .medium))
+                    Spacer()
+                    Picker("", selection: $vm.newAlarmMode) {
+                        ForEach(AlarmMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .labelsHidden()
+                    .controlSize(.small)
+                    .frame(width: 120)
+                }
+
+                // Brightness slider (if mode is not turnOff)
+                if vm.newAlarmMode != .turnOff {
+                    Divider().opacity(0.4)
+
+                    HStack(spacing: 8) {
+                        Text("Brightness")
+                            .font(.system(size: 11, weight: .medium))
+                        Slider(value: $vm.newAlarmBrightness, in: 10...100, step: 5)
+                            .controlSize(.mini)
+                        Text("\(Int(vm.newAlarmBrightness))%")
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .frame(width: 32, alignment: .trailing)
+                    }
+                }
+            }
+            .padding(10)
+            .liquidGlass(in: RoundedRectangle(cornerRadius: 10), interactive: false)
+
+            Spacer()
         }
-        .padding(16)
-        .frame(width: 280)
+        .frame(height: 220)
     }
 }
