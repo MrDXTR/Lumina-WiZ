@@ -18,9 +18,12 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
 
+        // Initialize ScheduleManager
+        _ = ScheduleManager.shared
+
         // Setup Popover
         let popover = NSPopover()
-        popover.contentSize = NSSize(width: 330, height: 490)
+        popover.contentSize = NSSize(width: 330, height: 515)
         popover.behavior = .transient
         popover.animates = true
         popover.contentViewController = NSHostingController(rootView: MainView())
@@ -38,6 +41,18 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.updateMenuBarIcon()
+            }
+            .store(in: &cancellables)
+
+        ScheduleManager.shared.$isAlarmTriggered
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] triggered in
+                self?.updateMenuBarIcon()
+                if triggered, let button = self?.statusItem.button {
+                    // Automatically display popover when alarm triggers so user can see and dismiss
+                    self?.popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+                    self?.popover.contentViewController?.view.window?.makeKey()
+                }
             }
             .store(in: &cancellables)
 
@@ -71,6 +86,14 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateMenuBarIcon() {
         guard let button = statusItem?.button else { return }
+
+        if ScheduleManager.shared.isAlarmTriggered {
+            let alarmImage = NSImage(systemSymbolName: "bell.badge.fill", accessibilityDescription: "Alarm Active")
+            button.image = alarmImage
+            button.toolTip = "Philips WiZ: ALARM RINGING! Click to Dismiss"
+            return
+        }
+
         let isOn = WizService.shared.isOn
         let bulbColor = WizService.shared.color
 
@@ -87,11 +110,11 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
             tinted.unlockFocus()
             tinted.isTemplate = false
             button.image = tinted
-            button.toolTip = "Philips WiZ: ON (\(Int(WizService.shared.brightness))%)\nOption-Click to Toggle"
+            button.toolTip = "Philips WiZ: ON (\(Int(WizService.shared.brightness))%) • Option-Click to Toggle"
         } else {
             baseImage?.isTemplate = true
             button.image = baseImage
-            button.toolTip = "Philips WiZ: OFF\nOption-Click to Toggle"
+            button.toolTip = "Philips WiZ: OFF • Option-Click to Toggle"
         }
     }
 }

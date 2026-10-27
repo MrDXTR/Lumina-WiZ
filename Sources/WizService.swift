@@ -4,9 +4,9 @@ import Combine
 
 private extension NSColor {
     convenience init(hexRGB: UInt32) {
-        self.init(srgbRed: CGFloat((hexRGB >> 16) & 0xff) / 255,
-                  green: CGFloat((hexRGB >> 8) & 0xff) / 255,
-                  blue: CGFloat(hexRGB & 0xff) / 255, alpha: 1)
+        self.init(srgbRed: CGFloat((hexRGB >> 16) & 0xff) / 255.0,
+                  green: CGFloat((hexRGB >> 8) & 0xff) / 255.0,
+                  blue: CGFloat(hexRGB & 0xff) / 255.0, alpha: 1.0)
     }
 }
 
@@ -14,20 +14,25 @@ public enum BulbControlMode: String, CaseIterable, Identifiable {
     case color = "Color"
     case temperature = "White"
     case scenes = "Scenes"
+    case alarms = "Alarm"
 
     public var id: String { rawValue }
 }
 
-public struct WizScene: Identifiable {
+public struct WizScene: Identifiable, Equatable {
     public let id: Int
     public let name: String
     public let icon: String
-}
+    public let isDynamic: Bool
+    public let previewColor: NSColor
 
-public struct ColorFlowPreset: Identifiable {
-    public let id: String
-    public let colors: [NSColor]
-    public let icon: String
+    public init(id: Int, name: String, icon: String, isDynamic: Bool = true, previewColor: NSColor = .white) {
+        self.id = id
+        self.name = name
+        self.icon = icon
+        self.isDynamic = isDynamic
+        self.previewColor = previewColor
+    }
 }
 
 public final class WizService: ObservableObject {
@@ -44,41 +49,39 @@ public final class WizService: ObservableObject {
     @Published public var brightness: Double = 100.0 // 10 to 100
     @Published public var color: NSColor = NSColor(srgbRed: 1.0, green: 0.85, blue: 0.65, alpha: 1.0)
     @Published public var temperature: Double = 3500.0 // 2200 to 6500 Kelvin
+    @Published public var dynamicSpeed: Double = 100.0 // 20 to 100
     @Published public var activeMode: BulbControlMode = .temperature
     @Published public var activeSceneId: Int = 0
-    @Published public var activeColorFlow: String?
     @Published public var visualChangeToken: UInt = 0
     @Published public var isConnected: Bool = false
     @Published public var isScanning: Bool = false
     @Published public var lastErrorMessage: String? = nil
 
     public let availableScenes: [WizScene] = [
-        WizScene(id: 6, name: "Candlelight", icon: "flame.fill"),
-        WizScene(id: 11, name: "Warm White", icon: "sun.haze.fill"),
-        WizScene(id: 12, name: "Daylight", icon: "sun.max.fill"),
-        WizScene(id: 13, name: "Cool White", icon: "snowflake"),
-        WizScene(id: 14, name: "Night Light", icon: "moon.stars.fill"),
-        WizScene(id: 1, name: "Ocean", icon: "water.waves"),
-        WizScene(id: 2, name: "Sunset", icon: "sunset.fill"),
-        WizScene(id: 3, name: "Party", icon: "sparkles"),
-        WizScene(id: 4, name: "Fireplace", icon: "fireplace.fill"),
-        WizScene(id: 5, name: "Forest", icon: "leaf.fill")
-    ]
+        // Native Hardware Dynamic Lighting (executed on bulb firmware)
+        WizScene(id: 33, name: "Diwali", icon: "sparkler", isDynamic: true, previewColor: NSColor(hexRGB: 0xFF9F1C)),
+        WizScene(id: 1, name: "Ocean", icon: "water.waves", isDynamic: true, previewColor: NSColor(hexRGB: 0x00B4D8)),
+        WizScene(id: 3, name: "Sunset", icon: "sunset.fill", isDynamic: true, previewColor: NSColor(hexRGB: 0xFF5E62)),
+        WizScene(id: 4, name: "Party", icon: "sparkles", isDynamic: true, previewColor: NSColor(hexRGB: 0xE040FB)),
+        WizScene(id: 5, name: "Fireplace", icon: "fireplace.fill", isDynamic: true, previewColor: NSColor(hexRGB: 0xFF4500)),
+        WizScene(id: 6, name: "Candlelight", icon: "flame.fill", isDynamic: true, previewColor: NSColor(hexRGB: 0xFF9933)),
+        WizScene(id: 7, name: "Forest", icon: "leaf.fill", isDynamic: true, previewColor: NSColor(hexRGB: 0x2ECC71)),
+        WizScene(id: 2, name: "Romance", icon: "heart.fill", isDynamic: true, previewColor: NSColor(hexRGB: 0xFF3366)),
+        WizScene(id: 20, name: "Aurora / Spring", icon: "sun.horizon.fill", isDynamic: true, previewColor: NSColor(hexRGB: 0x13C4A3)),
+        WizScene(id: 31, name: "Pulse", icon: "waveform.path", isDynamic: true, previewColor: NSColor(hexRGB: 0x38EF7D)),
+        WizScene(id: 32, name: "Steampunk", icon: "gearshape.2.fill", isDynamic: true, previewColor: NSColor(hexRGB: 0xDDA15E)),
+        WizScene(id: 35, name: "Alarm", icon: "bell.badge.fill", isDynamic: true, previewColor: NSColor(hexRGB: 0xFF1744)),
 
-    public let colorFlowPresets: [ColorFlowPreset] = [
-        ColorFlowPreset(id: "Diwali", colors: [NSColor(hexRGB: 0xFF7A18), NSColor(hexRGB: 0xFFD447), NSColor(hexRGB: 0xE83E8C), NSColor(hexRGB: 0xFF7A18)], icon: "sparkles"),
-        ColorFlowPreset(id: "Aurora", colors: [NSColor(hexRGB: 0x13C4A3), NSColor(hexRGB: 0x2678E8), NSColor(hexRGB: 0x8B5CF6), NSColor(hexRGB: 0x13C4A3)], icon: "sun.horizon.fill"),
-        ColorFlowPreset(id: "Sunset", colors: [NSColor(hexRGB: 0xFF4D4D), NSColor(hexRGB: 0xFF9F43), NSColor(hexRGB: 0xB33981), NSColor(hexRGB: 0xFF4D4D)], icon: "sunset.fill"),
-        ColorFlowPreset(id: "Ocean", colors: [NSColor(hexRGB: 0x00B4D8), NSColor(hexRGB: 0x4361EE), NSColor(hexRGB: 0x48CAE4), NSColor(hexRGB: 0x00B4D8)], icon: "water.waves")
+        // Static White Ambiances
+        WizScene(id: 11, name: "Warm White", icon: "sun.haze.fill", isDynamic: false, previewColor: NSColor(hexRGB: 0xFFD180)),
+        WizScene(id: 12, name: "Daylight", icon: "sun.max.fill", isDynamic: false, previewColor: NSColor(hexRGB: 0xFFF9E6)),
+        WizScene(id: 13, name: "Cool White", icon: "snowflake", isDynamic: false, previewColor: NSColor(hexRGB: 0xDDF3FF)),
+        WizScene(id: 14, name: "Night Light", icon: "moon.stars.fill", isDynamic: false, previewColor: NSColor(hexRGB: 0xCC7722))
     ]
 
     private let networkQueue = DispatchQueue(label: "com.lumina.network", qos: .userInitiated)
     private var debounceWorkItem: DispatchWorkItem?
     private var pollTimer: Timer?
-    private var colorFlowTimer: Timer?
-    private var colorFlowPreset: ColorFlowPreset?
-    private var colorFlowSegment = 0
-    private var colorFlowStep = 0
     private var controlRevision: UInt64 = 0
     private var lastLocalControlAt = Date.distantPast
     private let udpPort: UInt16 = 38899
@@ -86,6 +89,9 @@ public final class WizService: ObservableObject {
     private init() {
         let savedIP = UserDefaults.standard.string(forKey: "WizBulbIP") ?? "192.168.0.5"
         self.ipAddress = savedIP
+
+        let savedSpeed = UserDefaults.standard.double(forKey: "WizDynamicSpeed")
+        self.dynamicSpeed = savedSpeed >= 20.0 ? savedSpeed : 100.0
 
         // Initial fetch
         refreshStatus()
@@ -155,6 +161,8 @@ public final class WizService: ObservableObject {
     }
 
     public func setPower(_ state: Bool) {
+        debounceWorkItem?.cancel()
+        debounceWorkItem = nil
         noteLocalControl()
         noteVisualChange()
         self.isOn = state
@@ -162,7 +170,6 @@ public final class WizService: ObservableObject {
     }
 
     public func setBrightness(_ value: Double) {
-        stopColorFlow()
         noteVisualChange()
         noteLocalControl()
         let clamped = max(10.0, min(100.0, value))
@@ -173,11 +180,11 @@ public final class WizService: ObservableObject {
     }
 
     public func setColor(_ newColor: NSColor) {
-        stopColorFlow()
         noteVisualChange()
         noteLocalControl()
         self.color = newColor
         self.activeMode = .color
+        self.activeSceneId = 0
 
         guard let rgb = newColor.usingColorSpace(.sRGB) else { return }
         let r = Int(round(rgb.redComponent * 255))
@@ -196,12 +203,12 @@ public final class WizService: ObservableObject {
     }
 
     public func setTemperature(_ kelvin: Double) {
-        stopColorFlow()
         noteVisualChange()
         noteLocalControl()
         let clamped = max(2200.0, min(6500.0, kelvin))
         self.temperature = clamped
         self.activeMode = .temperature
+        self.activeSceneId = 0
 
         // Approximate color for 3D representation
         self.color = kelvinToColor(kelvin)
@@ -216,70 +223,65 @@ public final class WizService: ObservableObject {
     }
 
     public func setScene(_ scene: WizScene) {
-        stopColorFlow()
         noteVisualChange()
         noteLocalControl()
         self.activeSceneId = scene.id
         self.activeMode = .scenes
+        self.color = scene.previewColor
 
         debouncePilotCommand {
-            [
+            var params: [String: Any] = [
                 "state": true,
                 "sceneId": scene.id,
                 "dimming": Int(self.brightness)
             ]
+            if scene.isDynamic {
+                params["speed"] = Int(self.dynamicSpeed)
+            }
+            return params
+        }
+    }
+
+    public func setSceneIdDirect(_ sceneId: Int, speed: Int? = nil) {
+        noteVisualChange()
+        noteLocalControl()
+        self.activeSceneId = sceneId
+        if let scene = availableScenes.first(where: { $0.id == sceneId }) {
+            self.color = scene.previewColor
+        }
+
+        var params: [String: Any] = [
+            "state": true,
+            "sceneId": sceneId,
+            "dimming": Int(self.brightness)
+        ]
+        params["speed"] = speed ?? Int(self.dynamicSpeed)
+        sendPilotCommand(params)
+    }
+
+    public func setSpeed(_ speedValue: Double) {
+        let clamped = max(20.0, min(100.0, speedValue))
+        self.dynamicSpeed = clamped
+        UserDefaults.standard.set(clamped, forKey: "WizDynamicSpeed")
+
+        // If bulb is playing a dynamic scene, update speed immediately on bulb hardware
+        if isOn && activeSceneId > 0 {
+            if let scene = availableScenes.first(where: { $0.id == activeSceneId }), scene.isDynamic {
+                debouncePilotCommand {
+                    [
+                        "state": true,
+                        "sceneId": self.activeSceneId,
+                        "speed": Int(clamped),
+                        "dimming": Int(self.brightness)
+                    ]
+                }
+            }
         }
     }
 
     public func selectMode(_ mode: BulbControlMode) {
         noteLocalControl()
-        if mode != .scenes { stopColorFlow() }
         activeMode = mode
-    }
-
-    public func startColorFlow(_ preset: ColorFlowPreset) {
-        stopColorFlow()
-        noteVisualChange()
-        noteLocalControl()
-        activeMode = .scenes
-        activeSceneId = 0
-        colorFlowPreset = preset
-        activeColorFlow = preset.id
-        colorFlowSegment = 0
-        colorFlowStep = 0
-        advanceColorFlow()
-        colorFlowTimer = Timer.scheduledTimer(withTimeInterval: 0.55, repeats: true) { [weak self] _ in
-            self?.advanceColorFlow()
-        }
-    }
-
-    public func stopColorFlow() {
-        colorFlowTimer?.invalidate()
-        colorFlowTimer = nil
-        colorFlowPreset = nil
-        activeColorFlow = nil
-    }
-
-    private func advanceColorFlow() {
-        guard let preset = colorFlowPreset, preset.colors.count > 1 else { return }
-        let start = preset.colors[colorFlowSegment].usingColorSpace(.sRGB) ?? .white
-        let end = preset.colors[(colorFlowSegment + 1) % preset.colors.count].usingColorSpace(.sRGB) ?? .white
-        let t = CGFloat(colorFlowStep) / 10.0
-        let next = NSColor(srgbRed: start.redComponent + (end.redComponent - start.redComponent) * t,
-                           green: start.greenComponent + (end.greenComponent - start.greenComponent) * t,
-                           blue: start.blueComponent + (end.blueComponent - start.blueComponent) * t,
-                           alpha: 1)
-        color = next
-        noteVisualChange()
-        let r = Int(round(next.redComponent * 255))
-        let g = Int(round(next.greenComponent * 255))
-        let b = Int(round(next.blueComponent * 255))
-        sendPilotCommand(["state": true, "r": r, "g": g, "b": b, "dimming": Int(brightness)])
-        colorFlowStep += 1
-        if colorFlowStep > 10 {
-            colorFlowStep = 0
-            colorFlowSegment = (colorFlowSegment + 1) % (preset.colors.count - 1)
-        }
     }
 
     private func noteLocalControl() {
@@ -345,8 +347,6 @@ public final class WizService: ObservableObject {
             let resp = self.sendUDP(payload: req, host: currentIP, timeout: 0.8)
 
             DispatchQueue.main.async {
-                // A response that was already in flight when the user changed a control
-                // must not roll the interface back to the older bulb state.
                 let mayApplyControls = revisionAtRequest == self.controlRevision
                     && Date().timeIntervalSince(self.lastLocalControlAt) > 2.0
                 guard let resp = resp else {
@@ -364,6 +364,9 @@ public final class WizService: ObservableObject {
                     if let dimming = result["dimming"] as? Int {
                         self.brightness = Double(dimming)
                     }
+                    if let speed = result["speed"] as? Int, speed >= 20 {
+                        self.dynamicSpeed = Double(speed)
+                    }
                     if let temp = result["temp"] as? Int {
                         self.temperature = Double(temp)
                         if (result["sceneId"] as? Int ?? 0) == 0 && result["r"] == nil {
@@ -375,6 +378,9 @@ public final class WizService: ObservableObject {
                     }
                     if let sceneId = result["sceneId"] as? Int, sceneId > 0 {
                         self.activeSceneId = sceneId
+                        if let matched = self.availableScenes.first(where: { $0.id == sceneId }) {
+                            self.color = matched.previewColor
+                        }
                     }
                 }
             }
@@ -391,7 +397,6 @@ public final class WizService: ObservableObject {
         networkQueue.async { [weak self] in
             guard let self = self else { return }
 
-            // Subnet 192.168.0.x
             let group = DispatchGroup()
             var discoveredIP: String? = nil
             let lock = NSLock()
@@ -437,7 +442,6 @@ public final class WizService: ObservableObject {
         var green: Double
         var blue: Double
 
-        // Red
         if temp <= 66 {
             red = 255
         } else {
@@ -446,7 +450,6 @@ public final class WizService: ObservableObject {
             red = max(0, min(255, red))
         }
 
-        // Green
         if temp <= 66 {
             green = temp
             green = 99.4708025861 * log(green) - 161.1195681661
@@ -457,7 +460,6 @@ public final class WizService: ObservableObject {
             green = max(0, min(255, green))
         }
 
-        // Blue
         if temp >= 66 {
             blue = 255
         } else if temp <= 19 {

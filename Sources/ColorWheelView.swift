@@ -7,20 +7,8 @@ public struct ColorWheelView: View {
 
     @StateObject private var vm: ColorWheelViewModel
 
-    private let wheelDiameter: CGFloat = 148.0
+    private let wheelDiameter: CGFloat = 130.0
     private var radius: CGFloat { wheelDiameter / 2.0 }
-
-    // Quick presets
-    private let presetColors: [NSColor] = [
-        NSColor(srgbRed: 1.0, green: 0.85, blue: 0.65, alpha: 1.0), // Warm Candle
-        NSColor(srgbRed: 1.0, green: 0.40, blue: 0.20, alpha: 1.0), // Sunset Amber
-        NSColor(srgbRed: 0.95, green: 0.15, blue: 0.30, alpha: 1.0), // Crimson
-        NSColor(srgbRed: 0.70, green: 0.20, blue: 0.95, alpha: 1.0), // Neon Purple
-        NSColor(srgbRed: 0.20, green: 0.50, blue: 1.00, alpha: 1.0), // Deep Blue
-        NSColor(srgbRed: 0.10, green: 0.85, blue: 0.85, alpha: 1.0), // Cyan
-        NSColor(srgbRed: 0.20, green: 0.85, blue: 0.35, alpha: 1.0), // Emerald
-        NSColor(white: 0.98, alpha: 1.0)                             // Pure White
-    ]
 
     public init(selectedColor: Binding<NSColor>, onColorChanged: @escaping (NSColor) -> Void) {
         self._selectedColor = selectedColor
@@ -64,17 +52,17 @@ public struct ColorWheelView: View {
 
                 // Subtle edge stroke
                 Circle()
-                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
                     .frame(width: wheelDiameter, height: wheelDiameter)
 
                 // Draggable Selector Puck
                 Circle()
                     .fill(Color(selectedColor))
-                    .frame(width: 26, height: 26)
+                    .frame(width: 24, height: 24)
                     .overlay(
                         Circle()
-                            .stroke(Color.white, lineWidth: 2.5)
-                            .shadow(color: Color.black.opacity(0.3), radius: 3, x: 0, y: 1)
+                            .stroke(Color.white, lineWidth: 2.2)
+                            .shadow(color: Color.black.opacity(0.35), radius: 3, x: 0, y: 1)
                     )
                     .scaleEffect(vm.isDragging ? 1.15 : 1.0)
                     .animation(.spring(response: 0.25, dampingFraction: 0.65), value: vm.isDragging)
@@ -106,41 +94,107 @@ public struct ColorWheelView: View {
                 vm.hexText = newColor.hexString
             }
 
-            // Color Presets Bar
-            HStack(spacing: 8) {
-                ForEach(0..<presetColors.count, id: \.self) { idx in
-                    let col = presetColors[idx]
-                    Button(action: {
-                        selectedColor = col
-                        syncKnobFromColor(col)
-                        onColorChanged(col)
-                    }) {
-                        Circle()
-                            .fill(Color(col))
-                            .frame(width: 22, height: 22)
-                            .overlay(
-                                Circle()
-                                    .stroke(Color.white.opacity(0.4), lineWidth: 1.5)
-                            )
-                            .shadow(color: Color.black.opacity(0.15), radius: 2, x: 0, y: 1)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.top, 2)
+            // Favorites Bar (Up to 5 colors)
+            favoritesSection
 
-            HStack(spacing: 7) {
-                RoundedRectangle(cornerRadius: 4)
+            // Hex Input and Preview
+            HStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: 5)
                     .fill(Color(selectedColor))
-                    .frame(width: 18, height: 18)
+                    .frame(width: 20, height: 20)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5)
+                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                    )
+
                 TextField("#RRGGBB", text: $vm.hexText)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 11, design: .monospaced))
                     .onSubmit(applyHexColor)
+
                 Button("Apply", action: applyHexColor)
                     .controlSize(.small)
             }
         }
+    }
+
+    // MARK: - Favorites Section
+
+    private var favoritesSection: some View {
+        HStack(spacing: 8) {
+            Text("FAVORITES")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundColor(.secondary)
+
+            HStack(spacing: 7) {
+                ForEach(Array(vm.favoriteColors.enumerated()), id: \.offset) { index, hex in
+                    let col = NSColor(hex: hex) ?? .white
+                    Button {
+                        selectedColor = col
+                        syncKnobFromColor(col)
+                        onColorChanged(col)
+                        vm.hexText = hex
+                    } label: {
+                        ZStack(alignment: .topTrailing) {
+                            Circle()
+                                .fill(Color(col))
+                                .frame(width: 22, height: 22)
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.white.opacity(selectedColor.hexString == hex ? 0.9 : 0.25), lineWidth: selectedColor.hexString == hex ? 2 : 1)
+                                )
+                                .shadow(color: Color.black.opacity(0.2), radius: 2, x: 0, y: 1)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        Button("Apply Color") {
+                            selectedColor = col
+                            syncKnobFromColor(col)
+                            onColorChanged(col)
+                        }
+                        Button("Replace with Current") {
+                            vm.replaceFavorite(at: index, with: selectedColor.hexString)
+                        }
+                        Divider()
+                        Button("Remove Favorite", role: .destructive) {
+                            vm.removeFavorite(at: index)
+                        }
+                    }
+                }
+
+                // Add Current Color Button if less than 5
+                if vm.favoriteColors.count < 5 {
+                    Button {
+                        vm.addCurrentColorAsFavorite(selectedColor.hexString)
+                    } label: {
+                        Circle()
+                            .fill(Color.primary.opacity(0.08))
+                            .frame(width: 22, height: 22)
+                            .overlay(
+                                Image(systemName: "plus")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                            )
+                            .overlay(
+                                Circle()
+                                    .strokeBorder(Color.secondary.opacity(0.25), style: StrokeStyle(lineWidth: 1, dash: [2]))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .help("Add current color to favorites (up to 5)")
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            Text("\(vm.favoriteColors.count)/5")
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .foregroundColor(.secondary)
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 4)
+        .liquidGlass(in: RoundedRectangle(cornerRadius: 8), interactive: false)
     }
 
     private func applyHexColor() {
@@ -164,9 +218,7 @@ public struct ColorWheelView: View {
         let knobY = clampedDist * sin(angle)
         vm.knobPosition = CGPoint(x: knobX, y: knobY)
 
-        // Calculate Hue and Saturation
         var hue = (angle >= 0 ? angle : (2 * .pi + angle)) / (2 * .pi)
-        // Normalize angle
         hue = hue.truncatingRemainder(dividingBy: 1.0)
 
         let saturation = clampedDist / radius
@@ -199,9 +251,9 @@ private extension NSColor {
         var value = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         if value.hasPrefix("#") { value.removeFirst() }
         guard value.count == 6, let rgb = UInt32(value, radix: 16) else { return nil }
-        self.init(srgbRed: CGFloat((rgb >> 16) & 0xff) / 255,
-                  green: CGFloat((rgb >> 8) & 0xff) / 255,
-                  blue: CGFloat(rgb & 0xff) / 255, alpha: 1)
+        self.init(srgbRed: CGFloat((rgb >> 16) & 0xff) / 255.0,
+                  green: CGFloat((rgb >> 8) & 0xff) / 255.0,
+                  blue: CGFloat(rgb & 0xff) / 255.0, alpha: 1.0)
     }
 
     var hexString: String {
