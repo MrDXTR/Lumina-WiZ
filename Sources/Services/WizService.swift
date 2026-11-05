@@ -18,6 +18,7 @@ public final class WizService: ObservableObject {
     @Published public var temperature: Double = 3500.0 // 2200 to 6500 Kelvin
     @Published public var dynamicSpeed: Double = 100.0 // 20 to 100
     @Published public var activeMode: BulbControlMode = .temperature
+    @Published public var lightMode: BulbControlMode = .temperature
     @Published public var activeSceneId: Int = 0
     @Published public var visualChangeToken: UInt = 0
     @Published public var isConnected: Bool = false
@@ -194,6 +195,7 @@ public final class WizService: ObservableObject {
         noteLocalControl()
         self.color = newColor
         self.activeMode = .color
+        self.lightMode = .color
         self.activeSceneId = 0
 
         guard let rgb = newColor.usingColorSpace(.sRGB) else { return }
@@ -219,6 +221,7 @@ public final class WizService: ObservableObject {
         let clamped = max(2200.0, min(6500.0, kelvin))
         self.temperature = clamped
         self.activeMode = .temperature
+        self.lightMode = .temperature
         self.activeSceneId = 0
 
         // Synchronize visual color representation with temperature
@@ -237,6 +240,7 @@ public final class WizService: ObservableObject {
         noteLocalControl()
         self.activeSceneId = scene.id
         self.activeMode = .scenes
+        self.lightMode = .scenes
         self.color = scene.previewColor
 
         var params: [String: Any] = [
@@ -257,6 +261,7 @@ public final class WizService: ObservableObject {
         noteLocalControl()
         self.activeSceneId = sceneId
         self.activeMode = .scenes
+        self.lightMode = .scenes
 
         var params: [String: Any] = [
             "state": true,
@@ -312,12 +317,14 @@ public final class WizService: ObservableObject {
             self.temperature = clampedTemp
             self.color = kelvinToColor(clampedTemp)
             self.activeSceneId = 0
+            self.lightMode = .temperature
             params["temp"] = Int(clampedTemp)
             if self.activeMode != .saved {
                 self.activeMode = .temperature
             }
         } else if preset.mode == .scenes, let sceneId = preset.sceneId, sceneId > 0 {
             self.activeSceneId = sceneId
+            self.lightMode = .scenes
             if let scene = availableScenes.first(where: { $0.id == sceneId }) {
                 self.color = scene.previewColor
                 if scene.isDynamic {
@@ -332,6 +339,7 @@ public final class WizService: ObservableObject {
             let targetColor = NSColor(hex: preset.colorHex) ?? self.color
             self.color = targetColor
             self.activeSceneId = 0
+            self.lightMode = .color
             if let rgb = targetColor.usingColorSpace(.sRGB) {
                 params["r"] = Int(round(rgb.redComponent * 255))
                 params["g"] = Int(round(rgb.greenComponent * 255))
@@ -433,17 +441,20 @@ public final class WizService: ObservableObject {
                 if let dim = result["dimming"] as? Double {
                     self.brightness = dim
                 }
-                if let temp = result["temp"] as? Double {
-                    self.temperature = temp
-                    self.color = self.kelvinToColor(temp)
-                }
-                if let r = result["r"] as? Double,
-                   let g = result["g"] as? Double,
-                   let b = result["b"] as? Double {
-                    self.color = NSColor(srgbRed: r / 255.0, green: g / 255.0, blue: b / 255.0, alpha: 1.0)
-                }
                 if let sceneId = result["sceneId"] as? Int, sceneId > 0 {
                     self.activeSceneId = sceneId
+                    self.lightMode = .scenes
+                } else if let r = result["r"] as? Double,
+                          let g = result["g"] as? Double,
+                          let b = result["b"] as? Double {
+                    self.color = NSColor(srgbRed: r / 255.0, green: g / 255.0, blue: b / 255.0, alpha: 1.0)
+                    self.activeSceneId = 0
+                    self.lightMode = .color
+                } else if let temp = result["temp"] as? Double, temp > 0 {
+                    self.temperature = temp
+                    self.color = self.kelvinToColor(temp)
+                    self.activeSceneId = 0
+                    self.lightMode = .temperature
                 }
                 if let spd = result["speed"] as? Double {
                     self.dynamicSpeed = spd

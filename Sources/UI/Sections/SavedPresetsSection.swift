@@ -50,7 +50,22 @@ public struct SavedPresetsSection: View {
                     }
                 }
 
-                Text(wiz.isOn ? "CURRENT: \(Int(wiz.brightness))%" : "CURRENT: OFF")
+                let currentDescriptor: String = {
+                    guard wiz.isOn else { return "CURRENT: OFF" }
+                    let b = "\(Int(wiz.brightness))%"
+                    switch wiz.lightMode {
+                    case .temperature:
+                        return "\(Int(wiz.temperature))K • \(b)"
+                    case .scenes:
+                        return "SCENE • \(b)"
+                    case .color:
+                        return "\(wiz.color.hexString) • \(b)"
+                    default:
+                        return "\(wiz.color.hexString) • \(b)"
+                    }
+                }()
+
+                Text(currentDescriptor)
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
                     .foregroundColor(.secondary)
 

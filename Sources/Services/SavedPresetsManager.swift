@@ -73,26 +73,21 @@ public final class SavedPresetsManager: ObservableObject {
         var tempToSave: Double? = nil
         var sceneToSave: Int? = nil
 
-        switch wiz.activeMode {
+        switch wiz.lightMode {
         case .temperature:
             modeToSave = .temperature
             tempToSave = wiz.temperature
         case .scenes:
             modeToSave = .scenes
             sceneToSave = wiz.activeSceneId > 0 ? wiz.activeSceneId : nil
-        case .saved:
-            // If already in saved tab, determine the underlying look
-            if wiz.activeSceneId > 0 {
-                modeToSave = .scenes
-                sceneToSave = wiz.activeSceneId
-            } else if wiz.temperature > 0 && abs(wiz.temperature - 3500) > 1 {
-                modeToSave = .temperature
-                tempToSave = wiz.temperature
-            } else {
-                modeToSave = .color
-            }
+        case .color:
+            modeToSave = .color
+            tempToSave = nil
+            sceneToSave = nil
         default:
             modeToSave = .color
+            tempToSave = nil
+            sceneToSave = nil
         }
 
         return addPreset(
@@ -117,7 +112,7 @@ public final class SavedPresetsManager: ObservableObject {
         updated.brightness = wiz.brightness
         updated.colorHex = wiz.color.hexString
 
-        switch wiz.activeMode {
+        switch wiz.lightMode {
         case .temperature:
             updated.mode = .temperature
             updated.temperature = wiz.temperature
@@ -163,14 +158,17 @@ public final class SavedPresetsManager: ObservableObject {
             return true
         }
 
-        // Secondary match: same brightness and color/temperature
+        // Must match both the hardware lightMode and brightness
+        guard wiz.lightMode == preset.mode else { return false }
         let brightnessMatches = abs(wiz.brightness - preset.brightness) < 1.0
-        let colorMatches = wiz.color.hexString.uppercased() == preset.colorHex.uppercased()
+        guard brightnessMatches else { return false }
 
         if preset.mode == .temperature, let temp = preset.temperature {
-            return brightnessMatches && abs(wiz.temperature - temp) < 50.0 && wiz.activeMode == .temperature
+            return abs(wiz.temperature - temp) < 50.0
+        } else if preset.mode == .scenes, let sceneId = preset.sceneId {
+            return wiz.activeSceneId == sceneId
+        } else {
+            return wiz.color.hexString.uppercased() == preset.colorHex.uppercased()
         }
-
-        return brightnessMatches && colorMatches
     }
 }

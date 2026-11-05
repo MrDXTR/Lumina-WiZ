@@ -254,6 +254,30 @@ public enum LuminaTests {
         // Clean up
         mgr.deletePreset(id: newPreset.id)
         assertEqual(mgr.presets.count, initialCount, "Preset count restored after delete")
+
+        // Test saving color when on Saved tab
+        let wiz = WizService.shared
+        let redColor = NSColor(hexString: "#FF0000")!
+        wiz.setColor(redColor)
+        wiz.setBrightness(27.0)
+        assertEqual(wiz.lightMode, .color, "Light mode is color after setColor")
+
+        // User navigates to Saved tab
+        wiz.selectMode(.saved)
+        assertEqual(wiz.activeMode, .saved, "Active mode is now saved tab")
+        assertEqual(wiz.lightMode, .color, "Light mode remains color after tab switch")
+
+        let redPreset = mgr.saveCurrentLight(wiz: wiz, name: "Red")
+        assertEqual(redPreset.name, "Red", "Preset name is Red")
+        assertEqual(redPreset.mode, .color, "Preset mode is color, NOT temperature")
+        assertEqual(redPreset.colorHex, "#FF0000", "Preset colorHex is #FF0000")
+        assertTrue(redPreset.temperature == nil, "Preset temperature is nil")
+        assertEqual(redPreset.brightness, 27.0, "Preset brightness is 27%")
+        assertTrue(redPreset.displaySubtitle.contains("#FF0000"), "Subtitle contains hex code")
+        assertFalse(redPreset.displaySubtitle.contains("2700K"), "Subtitle does NOT contain 2700K")
+
+        // Clean up
+        mgr.deletePreset(id: redPreset.id)
     }
 
     private static func testMakePresetPayload() {
