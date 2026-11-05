@@ -40,6 +40,7 @@ public enum BulbControlMode: String, CaseIterable, Identifiable, Codable {
     case color = "Color"
     case temperature = "White"
     case scenes = "Scenes"
+    case saved = "Saved"
     case alarms = "Alarm"
 
     public var id: String { rawValue }
@@ -138,5 +139,53 @@ public struct BulbAlarm: Identifiable, Codable, Equatable {
         let period = hour >= 12 ? "PM" : "AM"
         let displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour)
         return String(format: "%d:%02d %@", displayHour, minute, period)
+    }
+}
+
+// MARK: - Saved Light Preset Model
+
+public struct SavedPreset: Identifiable, Codable, Equatable {
+    public var id: UUID
+    public var name: String
+    public var brightness: Double // 10.0 to 100.0
+    public var colorHex: String   // e.g. "#FFB347"
+    public var temperature: Double? // Kelvin if White mode (2200 to 6500)
+    public var sceneId: Int?       // Scene ID if Scenes mode
+    public var mode: BulbControlMode
+    public var createdAt: Date
+
+    public init(
+        id: UUID = UUID(),
+        name: String,
+        brightness: Double,
+        colorHex: String,
+        temperature: Double? = nil,
+        sceneId: Int? = nil,
+        mode: BulbControlMode = .color,
+        createdAt: Date = Date()
+    ) {
+        self.id = id
+        self.name = name
+        self.brightness = brightness
+        self.colorHex = colorHex
+        self.temperature = temperature
+        self.sceneId = sceneId
+        self.mode = mode
+        self.createdAt = createdAt
+    }
+
+    public var displaySubtitle: String {
+        let b = "\(Int(brightness))%"
+        if mode == .temperature, let temp = temperature {
+            return "\(Int(temp))K • \(b)"
+        } else if mode == .scenes, let sid = sceneId, sid > 0 {
+            return "Scene • \(b)"
+        } else {
+            return "\(colorHex.uppercased()) • \(b)"
+        }
+    }
+
+    public var previewColor: NSColor {
+        NSColor(hexString: colorHex) ?? .white
     }
 }

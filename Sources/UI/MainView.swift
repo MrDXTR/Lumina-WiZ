@@ -57,6 +57,10 @@ public struct MainView: View {
                     .disabled(!wiz.isOn)
                     .opacity(wiz.isOn ? 1.0 : 0.4)
 
+                case .saved:
+                    SavedPresetsSection(wiz: wiz, vm: vm)
+                        .frame(height: 220)
+
                 case .alarms:
                     AlarmsSection(schedule: schedule, vm: vm)
                         .frame(height: 220)

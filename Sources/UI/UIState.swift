@@ -62,6 +62,10 @@ public final class MainViewModel: ObservableObject {
     @Published public var newAlarmMode: AlarmMode = .hardwareAlarm
     @Published public var newAlarmBrightness: Double = 100.0
 
+    // Saved Presets State
+    @Published public var newPresetName: String = ""
+    @Published public var hoveredPresetId: UUID? = nil
+
     public init() {
         self.customIP = WizService.shared.ipAddress
         self.tempInputText = "\(Int(WizService.shared.temperature))"

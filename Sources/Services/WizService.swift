@@ -93,6 +93,31 @@ public final class WizService: ObservableObject {
         ]
     }
 
+    public static func makePresetPayload(preset: SavedPreset, dynamicSpeed: Double = 100.0) -> [String: Any] {
+        var params: [String: Any] = [
+            "state": true,
+            "dimming": Int(max(10.0, min(100.0, preset.brightness)))
+        ]
+
+        if preset.mode == .temperature, let temp = preset.temperature {
+            params["temp"] = Int(max(2200.0, min(6500.0, temp)))
+        } else if preset.mode == .scenes, let sceneId = preset.sceneId, sceneId > 0 {
+            params["sceneId"] = sceneId
+            if [1, 2, 3, 4, 5, 6, 7, 20, 31, 32, 33, 35].contains(sceneId) {
+                params["speed"] = Int(max(20.0, min(100.0, dynamicSpeed)))
+            }
+        } else {
+            let col = NSColor(hex: preset.colorHex) ?? .white
+            if let rgb = col.usingColorSpace(.sRGB) {
+                params["r"] = Int(round(rgb.redComponent * 255))
+                params["g"] = Int(round(rgb.greenComponent * 255))
+                params["b"] = Int(round(rgb.blueComponent * 255))
+            }
+        }
+
+        return makePilotPayload(params: params)
+    }
+
     // MARK: - UDP Socket Communication
 
     private func sendUDP(payload: [String: Any], host: String, timeout: TimeInterval = 1.0) -> [String: Any]? {
@@ -268,6 +293,58 @@ public final class WizService: ObservableObject {
                 "speed": Int(clamped)
             ]
         }
+    }
+
+    public func applyPreset(_ preset: SavedPreset) {
+        noteVisualChange()
+        noteLocalControl()
+        self.isOn = true
+        let clampedBrightness = max(10.0, min(100.0, preset.brightness))
+        self.brightness = clampedBrightness
+
+        var params: [String: Any] = [
+            "state": true,
+            "dimming": Int(clampedBrightness)
+        ]
+
+        if preset.mode == .temperature, let temp = preset.temperature {
+            let clampedTemp = max(2200.0, min(6500.0, temp))
+            self.temperature = clampedTemp
+            self.color = kelvinToColor(clampedTemp)
+            self.activeSceneId = 0
+            params["temp"] = Int(clampedTemp)
+            if self.activeMode != .saved {
+                self.activeMode = .temperature
+            }
+        } else if preset.mode == .scenes, let sceneId = preset.sceneId, sceneId > 0 {
+            self.activeSceneId = sceneId
+            if let scene = availableScenes.first(where: { $0.id == sceneId }) {
+                self.color = scene.previewColor
+                if scene.isDynamic {
+                    params["speed"] = Int(dynamicSpeed)
+                }
+            }
+            params["sceneId"] = sceneId
+            if self.activeMode != .saved {
+                self.activeMode = .scenes
+            }
+        } else {
+            let targetColor = NSColor(hex: preset.colorHex) ?? self.color
+            self.color = targetColor
+            self.activeSceneId = 0
+            if let rgb = targetColor.usingColorSpace(.sRGB) {
+                params["r"] = Int(round(rgb.redComponent * 255))
+                params["g"] = Int(round(rgb.greenComponent * 255))
+                params["b"] = Int(round(rgb.blueComponent * 255))
+            }
+            if self.activeMode != .saved {
+                self.activeMode = .color
+            }
+        }
+
+        debounceWorkItem?.cancel()
+        debounceWorkItem = nil
+        sendPilotCommand(params)
     }
 
     public func selectMode(_ mode: BulbControlMode) {

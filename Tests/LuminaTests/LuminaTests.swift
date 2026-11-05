@@ -46,6 +46,9 @@ public enum LuminaTests {
         testAlarmScheduleTriggering()
         testBulbAlarmCodable()
         testAlarmAddAndEditWorkflow()
+        testSavedPresetCodable()
+        testSavedPresetsManagerAddAndApply()
+        testMakePresetPayload()
 
         print("==> Test Results: \(passedTests)/\(totalTests) passed (\(failedTests) failed).")
         return failedTests == 0
@@ -196,5 +199,98 @@ public enum LuminaTests {
         // Clean up
         mgr.deleteAlarm(id: testId)
         assertEqual(mgr.alarms.count, initialCount, "Alarm cleaned up successfully")
+    }
+
+    private static func testSavedPresetCodable() {
+        let preset = SavedPreset(
+            id: UUID(),
+            name: "Sunset Relax",
+            brightness: 65.0,
+            colorHex: "#FF5E62",
+            temperature: 2800.0,
+            sceneId: nil,
+            mode: .temperature
+        )
+
+        do {
+            let data = try JSONEncoder().encode(preset)
+            let decoded = try JSONDecoder().decode(SavedPreset.self, from: data)
+
+            assertEqual(preset.id, decoded.id, "Preset ID matches")
+            assertEqual(preset.name, decoded.name, "Preset name matches")
+            assertEqual(preset.brightness, decoded.brightness, "Preset brightness matches")
+            assertEqual(preset.colorHex, decoded.colorHex, "Preset colorHex matches")
+            assertEqual(preset.temperature, decoded.temperature, "Preset temperature matches")
+            assertEqual(preset.mode, decoded.mode, "Preset mode matches")
+        } catch {
+            assertTrue(false, "SavedPreset encoding error: \(error)")
+        }
+    }
+
+    private static func testSavedPresetsManagerAddAndApply() {
+        let mgr = SavedPresetsManager.shared
+        let initialCount = mgr.presets.count
+
+        let newPreset = mgr.addPreset(
+            name: "Testing Glow",
+            brightness: 80.0,
+            colorHex: "#00B4D8",
+            mode: .color
+        )
+        assertEqual(mgr.presets.count, initialCount + 1, "Preset count increments on add")
+        assertEqual(mgr.presets.first?.name, "Testing Glow", "Newly added preset is at top")
+        assertEqual(mgr.activePresetId, newPreset.id, "Newly added preset becomes active")
+
+        // Edit/update preset
+        var edited = newPreset
+        edited.name = "Renamed Glow"
+        edited.brightness = 90.0
+        mgr.updatePreset(edited)
+
+        let found = mgr.presets.first(where: { $0.id == newPreset.id })
+        assertEqual(found?.name, "Renamed Glow", "Preset renamed")
+        assertEqual(found?.brightness, 90.0, "Preset brightness updated")
+
+        // Clean up
+        mgr.deletePreset(id: newPreset.id)
+        assertEqual(mgr.presets.count, initialCount, "Preset count restored after delete")
+    }
+
+    private static func testMakePresetPayload() {
+        // Temperature Preset
+        let tempPreset = SavedPreset(
+            name: "Warm Study",
+            brightness: 75.0,
+            colorHex: "#FFB347",
+            temperature: 3200.0,
+            mode: .temperature
+        )
+        let tempPayload = WizService.makePresetPayload(preset: tempPreset)
+        assertEqual(tempPayload["method"] as? String, "setPilot", "Method is setPilot")
+        guard let tempParams = tempPayload["params"] as? [String: Any] else {
+            assertTrue(false, "Params must exist")
+            return
+        }
+        assertEqual(tempParams["state"] as? Bool, true, "State is true")
+        assertEqual(tempParams["dimming"] as? Int, 75, "Dimming is 75")
+        assertEqual(tempParams["temp"] as? Int, 3200, "Temp is 3200")
+
+        // Color Preset
+        let colorPreset = SavedPreset(
+            name: "Cyan Chill",
+            brightness: 50.0,
+            colorHex: "#00B4D8",
+            mode: .color
+        )
+        let colorPayload = WizService.makePresetPayload(preset: colorPreset)
+        guard let colorParams = colorPayload["params"] as? [String: Any] else {
+            assertTrue(false, "Color params must exist")
+            return
+        }
+        assertEqual(colorParams["state"] as? Bool, true, "State is true")
+        assertEqual(colorParams["dimming"] as? Int, 50, "Dimming is 50")
+        assertEqual(colorParams["r"] as? Int, 0, "R channel is 0")
+        assertEqual(colorParams["g"] as? Int, 180, "G channel is 180")
+        assertEqual(colorParams["b"] as? Int, 216, "B channel is 216")
     }
 }

@@ -92,6 +92,51 @@ public enum SelfTest {
             failures.append("shouldTriggerAlarm unexpectedly triggered on Sunday for weekday alarm")
         }
 
+        // Test 5: Saved Presets Model & Logic
+        let testPreset = SavedPreset(
+            name: "SelfTest Preset",
+            brightness: 72.0,
+            colorHex: "#FFB347",
+            temperature: 3000.0,
+            mode: .temperature
+        )
+
+        do {
+            let data = try JSONEncoder().encode(testPreset)
+            let decoded = try JSONDecoder().decode(SavedPreset.self, from: data)
+            if decoded.name != testPreset.name || decoded.brightness != 72.0 || decoded.colorHex != "#FFB347" {
+                failures.append("SavedPreset JSON encode/decode roundtrip mismatch")
+            }
+        } catch {
+            failures.append("SavedPreset JSON encoding failed: \(error)")
+        }
+
+        let presetPayload = WizService.makePresetPayload(preset: testPreset)
+        guard let pMethod = presetPayload["method"] as? String, pMethod == "setPilot",
+              let pParams = presetPayload["params"] as? [String: Any],
+              let pState = pParams["state"] as? Bool, pState == true,
+              let pDim = pParams["dimming"] as? Int, pDim == 72,
+              let pTemp = pParams["temp"] as? Int, pTemp == 3000 else {
+            failures.append("WizService.makePresetPayload produced incorrect params for temperature preset")
+            return exitWithFailures(failures)
+        }
+
+        let presetsMgr = SavedPresetsManager.shared
+        let initialPresetCount = presetsMgr.presets.count
+        let addedPreset = presetsMgr.addPreset(
+            name: "Temporary Test",
+            brightness: 55.0,
+            colorHex: "#8B5CF6",
+            mode: .color
+        )
+        if presetsMgr.presets.count != initialPresetCount + 1 {
+            failures.append("SavedPresetsManager addPreset failed to increment count")
+        }
+        presetsMgr.deletePreset(id: addedPreset.id)
+        if presetsMgr.presets.count != initialPresetCount {
+            failures.append("SavedPresetsManager deletePreset failed to decrement count")
+        }
+
         exitWithFailures(failures)
     }
 
